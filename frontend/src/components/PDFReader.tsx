@@ -131,6 +131,8 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const activeRenderTaskRef = useRef<any>(null);
+  // True while a programmatic scroll is in flight — suppresses IntersectionObserver feedback
+  const isProgrammaticScrollRef = useRef(false);
 
   // ── Load PDF ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -221,26 +223,43 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
   // ── Keyboard navigation ───────────────────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight') setCurrentPage((p) => Math.min(totalPages, p + 1));
-      else if (e.key === 'ArrowLeft') setCurrentPage((p) => Math.max(1, p - 1));
-      else if (e.key === ' ') {
+      if (e.key === 'ArrowRight') {
+        if (scrollMode) jumpToPage(currentPage + 1);
+        else setCurrentPage((p) => Math.min(totalPages, p + 1));
+      } else if (e.key === 'ArrowLeft') {
+        if (scrollMode) jumpToPage(currentPage - 1);
+        else setCurrentPage((p) => Math.max(1, p - 1));
+      } else if (e.key === ' ') {
         e.preventDefault();
         if (containerRef.current) containerRef.current.scrollTop += 200;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [totalPages]);
+  }, [totalPages, scrollMode, currentPage, jumpToPage]);
 
-  // ── Scroll to page in infinite scroll mode ────────────────────────────────
-  useEffect(() => {
-    if (!scrollMode) return;
-    const el = document.getElementById(`pdf-page-${currentPage}`);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [currentPage, scrollMode]);
+  // ── Jump to a specific page (scroll mode only, explicit user action) ────────
+  const jumpToPage = useCallback((page: number) => {
+    const clamped = Math.max(1, Math.min(totalPages, page));
+    setCurrentPage(clamped);
+    if (scrollMode) {
+      isProgrammaticScrollRef.current = true;
+      const el = document.getElementById(`pdf-page-${clamped}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Clear the flag after the smooth scroll settles (~600ms)
+        setTimeout(() => { isProgrammaticScrollRef.current = false; }, 650);
+      } else {
+        isProgrammaticScrollRef.current = false;
+      }
+    }
+  }, [scrollMode, totalPages]);
 
+  // IntersectionObserver callback — only updates display counter, never scrolls
   const handleVisiblePage = useCallback((page: number) => {
-    setCurrentPage(page);
+    if (!isProgrammaticScrollRef.current) {
+      setCurrentPage(page);
+    }
   }, []);
 
   const Divider = () => (
@@ -295,7 +314,7 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
           {/* Prev / Page input / Next */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <button
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              onClick={() => jumpToPage(currentPage - 1)}
               disabled={currentPage <= 1}
               style={{ color: currentPage <= 1 ? 'var(--text-muted)' : '#fff', padding: '5px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.04)' }}
               title="Previous page"
@@ -310,7 +329,7 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
                 max={totalPages}
                 onChange={(e) => {
                   const v = parseInt(e.target.value);
-                  if (v >= 1 && v <= totalPages) setCurrentPage(v);
+                  if (v >= 1 && v <= totalPages) jumpToPage(v);
                 }}
                 style={{
                   width: '46px',
@@ -326,7 +345,7 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
               <span>/ {totalPages}</span>
             </div>
             <button
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              onClick={() => jumpToPage(currentPage + 1)}
               disabled={currentPage >= totalPages}
               style={{ color: currentPage >= totalPages ? 'var(--text-muted)' : '#fff', padding: '5px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.04)' }}
               title="Next page"

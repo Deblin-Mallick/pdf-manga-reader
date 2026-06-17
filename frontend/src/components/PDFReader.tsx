@@ -179,12 +179,18 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      const cw = containerRef.current.clientWidth;
-      const ch = containerRef.current.clientHeight;
+      const cw = containerRef.current.clientWidth  - 40;
+      const ch = containerRef.current.clientHeight - 40;
       const unscaled = page.getViewport({ scale: 1.0 });
       let scale = zoom;
-      if (viewMode === 'fit-width') scale = (cw / unscaled.width) * zoom;
-      else if (viewMode === 'fit-height') scale = ((ch - 40) / unscaled.height) * zoom;
+      if (viewMode === 'fit-width') {
+        // Fit within BOTH width and height so the full page is visible without scrolling
+        const byWidth  = cw / unscaled.width;
+        const byHeight = ch / unscaled.height;
+        scale = Math.min(byWidth, byHeight) * zoom;
+      } else if (viewMode === 'fit-height') {
+        scale = (ch / unscaled.height) * zoom;
+      }
 
       const viewport = page.getViewport({ scale });
       canvas.width = viewport.width;
@@ -450,10 +456,11 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
         ref={containerRef}
         style={{
           flex: 1,
-          overflow: 'auto',
+          overflow: scrollMode ? 'auto' : 'hidden',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
+          justifyContent: scrollMode ? 'flex-start' : 'center',
           padding: '20px',
           backgroundColor: '#050508',
           borderRadius: '16px',
@@ -496,21 +503,29 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
             }}
           />
         )}
+      </div>
 
-        {/* ── Green circle home button — top-left, sticky ── */}
-        {!loading && (
+      {/* ── Fixed overlay: home button + zoom widget (outside scrollable area) ── */}
+      {!loading && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          zIndex: 30,
+          // offset for the toolbar height + margins
+          top: '60px',
+        }}>
+
+          {/* Green circle home button — top-left */}
           <button
             onClick={onBack}
             title="Back to Library"
             className="pdf-home-btn"
             style={{
-              position: 'sticky',
-              top: '12px',
-              left: '12px',
-              alignSelf: 'flex-start',
-              marginLeft: '0',
-              marginBottom: '-44px',   // pull back so it doesn't push content
-              zIndex: 20,
+              position: 'absolute',
+              top: '16px',
+              left: '16px',
+              pointerEvents: 'auto',
               width: '40px',
               height: '40px',
               borderRadius: '50%',
@@ -521,41 +536,30 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
               justifyContent: 'center',
               border: '2px solid rgba(255,255,255,0.18)',
               cursor: 'pointer',
-              transition: 'transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease',
-              flexShrink: 0,
+              transition: 'transform 0.2s ease, box-shadow 0.2s ease',
             }}
           >
-            {/* SleekReader book icon — same svg used in the app header */}
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
               <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
             </svg>
           </button>
-        )}
 
-        {/* ── Hover-triggered zoom widget — bottom-left ── */}
-        {!loading && (
-          <div className="pdf-zoom-anchor">
+          {/* Hover-triggered zoom widget — bottom-left */}
+          <div className="pdf-zoom-anchor" style={{ position: 'absolute', bottom: '16px', left: '16px', pointerEvents: 'auto' }}>
             <div className="pdf-zoom-pill">
-              <button
-                onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}
-                className="pdf-zoom-btn"
-                title="Zoom out"
-              >
+              <button onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} className="pdf-zoom-btn" title="Zoom out">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
               </button>
               <span className="pdf-zoom-pct">{Math.round(zoom * 100)}%</span>
-              <button
-                onClick={() => setZoom((z) => Math.min(3.0, z + 0.25))}
-                className="pdf-zoom-btn"
-                title="Zoom in"
-              >
+              <button onClick={() => setZoom((z) => Math.min(3.0, z + 0.25))} className="pdf-zoom-btn" title="Zoom in">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               </button>
             </div>
           </div>
-        )}
-      </div>
+
+        </div>
+      )}
 
       <style>{`
         .hover-white:hover { color: #fff !important; }

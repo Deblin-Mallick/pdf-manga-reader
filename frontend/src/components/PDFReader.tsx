@@ -447,119 +447,120 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
           </button>
         </div>
 
-        {/* Right spacer (keeps title centred) */}
+        {/* Right spacer */}
         <div style={{ minWidth: '60px' }} />
       </div>
 
-      {/* ── Canvas Container ─────────────────────────────────────────────── */}
-      <div
-        ref={containerRef}
-        style={{
-          flex: 1,
-          overflow: scrollMode ? 'auto' : 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: scrollMode ? 'flex-start' : 'center',
-          padding: '20px',
-          backgroundColor: '#050508',
-          borderRadius: '16px',
-          border: '1px solid var(--border-glass)',
-          position: 'relative',
-        }}
-      >
-        {loading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', margin: 'auto' }}>
-            <div style={{ width: '40px', height: '40px', borderRadius: '50%', border: '3px solid var(--border-glass)', borderTopColor: 'var(--accent-secondary)', animation: 'spin 1s linear infinite' }} />
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Loading book pages...</p>
-          </div>
-        ) : scrollMode ? (
-          /* ── Infinite scroll: render every page ─── */
-          <>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
-              <PDFPageCanvas
-                key={pageNum}
-                pdf={pdf!}
-                pageNumber={pageNum}
-                zoom={zoom}
-                viewMode={viewMode}
-                isInverted={isInverted}
-                containerWidth={containerSize.width - 40}
-                containerHeight={containerSize.height}
-                onVisible={handleVisiblePage}
-              />
-            ))}
-          </>
-        ) : (
-          /* ── Single page canvas ─── */
-          <canvas
-            ref={canvasRef}
-            style={{
-              boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
-              borderRadius: '4px',
-              transition: 'filter 0.3s ease',
-              filter: isInverted ? 'invert(0.9) hue-rotate(180deg)' : 'none',
-              maxWidth: '100%',
-            }}
-          />
-        )}
-      </div>
+      {/* ── Canvas area wrapper ── shares position context between scrollable content and overlay */}
+      <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
 
-      {/* ── Fixed overlay: home button + zoom widget (outside scrollable area) ── */}
-      {!loading && (
-        <div style={{
-          position: 'absolute',
-          inset: 0,
-          pointerEvents: 'none',
-          zIndex: 30,
-          // offset for the toolbar height + margins
-          top: '60px',
-        }}>
+        {/* Scrollable / hidden canvas container */}
+        <div
+          ref={containerRef}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            overflow: scrollMode ? 'auto' : 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: scrollMode ? 'flex-start' : 'center',
+            padding: '20px',
+            backgroundColor: '#050508',
+            borderRadius: '16px',
+            border: '1px solid var(--border-glass)',
+          }}
+        >
+          {loading ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', margin: 'auto' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '50%', border: '3px solid var(--border-glass)', borderTopColor: 'var(--accent-secondary)', animation: 'spin 1s linear infinite' }} />
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Loading book pages...</p>
+            </div>
+          ) : scrollMode ? (
+            <>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                <PDFPageCanvas
+                  key={pageNum}
+                  pdf={pdf!}
+                  pageNumber={pageNum}
+                  zoom={zoom}
+                  viewMode={viewMode}
+                  isInverted={isInverted}
+                  containerWidth={containerSize.width - 40}
+                  containerHeight={containerSize.height}
+                  onVisible={handleVisiblePage}
+                />
+              ))}
+            </>
+          ) : (
+            <canvas
+              ref={canvasRef}
+              style={{
+                boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                borderRadius: '4px',
+                transition: 'filter 0.3s ease',
+                filter: isInverted ? 'invert(0.9) hue-rotate(180deg)' : 'none',
+                maxWidth: '100%',
+              }}
+            />
+          )}
+        </div>
 
-          {/* Green circle home button — top-left */}
-          <button
-            onClick={onBack}
-            title="Back to Library"
-            className="pdf-home-btn"
-            style={{
-              position: 'absolute',
-              top: '16px',
-              left: '16px',
-              pointerEvents: 'auto',
-              width: '40px',
-              height: '40px',
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
-              boxShadow: '0 4px 16px rgba(34,197,94,0.45)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              border: '2px solid rgba(255,255,255,0.18)',
-              cursor: 'pointer',
-              transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-            }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-            </svg>
-          </button>
+        {/* Overlay: always covers exactly the canvas area, works at any resolution */}
+        {!loading && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            zIndex: 30,
+            borderRadius: '16px',
+            overflow: 'hidden',
+          }}>
+            {/* Green circle home button — top-left */}
+            <button
+              onClick={onBack}
+              title="Back to Library"
+              className="pdf-home-btn"
+              style={{
+                position: 'absolute',
+                top: '16px',
+                left: '16px',
+                pointerEvents: 'auto',
+                width: '40px',
+                height: '40px',
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                boxShadow: '0 4px 16px rgba(34,197,94,0.45)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: '2px solid rgba(255,255,255,0.18)',
+                cursor: 'pointer',
+                transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+              }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+              </svg>
+            </button>
 
-          {/* Hover-triggered zoom widget — bottom-left */}
-          <div className="pdf-zoom-anchor" style={{ position: 'absolute', bottom: '16px', left: '16px', pointerEvents: 'auto' }}>
-            <div className="pdf-zoom-pill">
-              <button onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} className="pdf-zoom-btn" title="Zoom out">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              </button>
-              <span className="pdf-zoom-pct">{Math.round(zoom * 100)}%</span>
-              <button onClick={() => setZoom((z) => Math.min(3.0, z + 0.25))} className="pdf-zoom-btn" title="Zoom in">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              </button>
+            {/* Hover-triggered zoom widget — bottom-left */}
+            <div className="pdf-zoom-anchor" style={{ position: 'absolute', bottom: '16px', left: '16px', pointerEvents: 'auto' }}>
+              <div className="pdf-zoom-pill">
+                <button onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} className="pdf-zoom-btn" title="Zoom out">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </button>
+                <span className="pdf-zoom-pct">{Math.round(zoom * 100)}%</span>
+                <button onClick={() => setZoom((z) => Math.min(3.0, z + 0.25))} className="pdf-zoom-btn" title="Zoom in">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </button>
+              </div>
             </div>
           </div>
+        )}
 
-        </div>
-      )}
+      </div>
 
       <style>{`
         .hover-white:hover { color: #fff !important; }
@@ -587,15 +588,8 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
 
         /* ── Zoom anchor (hitbox) ── */
         .pdf-zoom-anchor {
-          position: sticky;
-          bottom: 12px;
-          left: 12px;
-          align-self: flex-start;
-          margin-top: -52px;     /* pull up so it doesn’t push content */
-          margin-left: 0;
-          z-index: 20;
-          padding: 20px 20px 4px 4px;  /* invisible extra hover area */
           width: fit-content;
+          padding: 20px 20px 4px 4px;
         }
         .pdf-zoom-pill {
           display: flex;
@@ -643,3 +637,4 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
     </div>
   );
 }
+

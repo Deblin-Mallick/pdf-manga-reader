@@ -1,6 +1,17 @@
 version: '3.8'
 
 services:
+  db:
+    image: postgres:15-alpine
+    container_name: pdf-manga-reader-db
+    environment:
+      POSTGRES_USER: ${DB_USER:-reader_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-reader_password}
+      POSTGRES_DB: ${DB_NAME:-reader_db}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
   backend:
     build:
       context: .
@@ -12,8 +23,15 @@ services:
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - JWT_SECRET=${JWT_SECRET:-super-secret-manga-reader-token-key-2026}
       - ENVIRONMENT=production
+      - DATABASE_URL=postgresql://${DB_USER:-reader_user}:${DB_PASSWORD:-reader_password}@db:5432/${DB_NAME:-reader_db}
+    depends_on:
+      - db
     volumes:
-      - ./backend/data:/app/data
-      - ./backend/uploads:/app/uploads
-      - ./backend/covers:/app/covers
+      - uploads:/app/uploads
+      - covers:/app/covers
     restart: unless-stopped
+
+volumes:
+  pgdata:
+  uploads:
+  covers:

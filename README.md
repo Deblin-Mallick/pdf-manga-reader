@@ -146,15 +146,15 @@ Follow these steps to run the frontend and backend in concurrent development mod
 
 ### 🐳 Running with Docker (Recommended)
 
-The project includes a multi-stage `Dockerfile` and a `docker-compose.yml` configuration. Docker compiles the React frontend assets, copies them into the backend directory, and serves the completed application from a single container.
+The project includes a multi-stage `Dockerfile` and a `docker-compose.yml` configuration to orchestrate a two-container architecture (one for the FastAPI server/frontend and one for the PostgreSQL database). If the web server crashes or restarts, the database container remains running and unaffected.
 
 1.  Create and configure the `.env` file in the root directory.
-2.  Start the service:
+2.  Start the services:
     ```bash
     docker-compose up --build
     ```
-3.  The single-container app will be running at **`http://localhost:8000`**.
-4.  All uploaded books, SQLite files, and cover images will be safely persisted in local volumes under `./backend/data`, `./backend/uploads`, and `./backend/covers`.
+3.  The web application will be running at **`http://localhost:8000`**.
+4.  All uploaded books, cover images, and the PostgreSQL database are safely persisted inside Docker-managed named volumes (`uploads`, `covers`, and `pgdata`). This ensures that your files and databases are completely safe from deletion when updating stack builds or pulling new repository commits in Portainer.
 
 ---
 

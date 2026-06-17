@@ -55,4 +55,4 @@ jobs:
 
       - name: Build Docker Image
         run: |
-          docker build -t pdf-manga-reader-backend ./backend
+          docker build -t pdf-manga-reader-backend -f backend/Dockerfile .

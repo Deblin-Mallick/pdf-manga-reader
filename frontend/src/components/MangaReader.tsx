@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, ChevronLeft, ChevronRight, Layout, AlignJustify, Eye, Sun, Undo } from 'lucide-react';
 import JSZip from 'jszip';
 import { Book } from '../App';

@@ -32,3 +32,4 @@ frontend/dist/
 backend/uploads/
 backend/covers/
 backend/*.db
+node_modules

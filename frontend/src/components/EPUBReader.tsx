@@ -1068,13 +1068,13 @@ export default function EPUBReader({
             overflow: 'hidden',
             display: 'flex',
             justifyContent: 'center',
-            alignItems: 'center',
+            alignItems: 'stretch',
             padding: '24px',
             transition: 'background 0.3s'
           }}
         >
           {loading ? (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', margin: 'auto' }}>
               <div style={{ width: '40px', height: '40px', borderRadius: '50%', border: '3px solid var(--border-glass)', borderTopColor: 'var(--accent-primary)', animation: 'spin 1s linear infinite' }} />
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{loadingText}</p>
             </div>
@@ -1083,13 +1083,14 @@ export default function EPUBReader({
               style={{
                 width: '100%',
                 maxWidth: '800px',
-                height: '100%',
                 borderRadius: '12px',
                 boxShadow: settings.theme === 'dark' ? '0 10px 40px rgba(0,0,0,0.5)' : '0 10px 40px rgba(0,0,0,0.08)',
                 overflow: 'hidden',
                 border: `1px solid ${activeTheme.border}`,
                 backgroundColor: activeTheme.cardBg,
-                transition: 'background-color 0.3s, border 0.3s'
+                transition: 'background-color 0.3s, border 0.3s',
+                display: 'flex',
+                flexDirection: 'column'
               }}
             >
               <iframe 
@@ -1097,7 +1098,7 @@ export default function EPUBReader({
                 srcDoc={pageHtml}
                 style={{ 
                   width: '100%',
-                  height: '100%',
+                  flex: 1,
                   border: 'none',
                   backgroundColor: 'transparent'
                 }}

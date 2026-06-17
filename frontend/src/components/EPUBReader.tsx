@@ -138,7 +138,7 @@ export default function EPUBReader({
   const [loadingText, setLoadingText] = useState<string>('Downloading EPUB...');
   
   // Collapsible Sidebar & Tabs
-  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
   const [sidebarTab, setSidebarTab] = useState<'toc' | 'search' | 'bookmarks' | 'notes'>('toc');
   
   // Settings cog open state
@@ -151,9 +151,51 @@ export default function EPUBReader({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState<boolean>(false);
+  const [showFooter, setShowFooter] = useState<boolean>(false);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const blobUrlsRef = useRef<string[]>([]);
+
+  // Hide footer when page changes
+  useEffect(() => {
+    setShowFooter(false);
+  }, [currentPage]);
+
+  const handleIframeLoad = () => {
+    const iframe = iframeRef.current;
+    if (!iframe || !iframe.contentWindow || !iframe.contentDocument) return;
+
+    const doc = iframe.contentDocument;
+    const win = iframe.contentWindow;
+
+    const checkScroll = () => {
+      if (!doc.body || !doc.documentElement) return;
+
+      const scrollHeight = Math.max(
+        doc.body.scrollHeight,
+        doc.body.offsetHeight,
+        doc.documentElement.clientHeight,
+        doc.documentElement.scrollHeight,
+        doc.documentElement.offsetHeight
+      );
+
+      const clientHeight = doc.documentElement.clientHeight || doc.body.clientHeight || win.innerHeight;
+      const scrollTop = win.pageYOffset || doc.documentElement.scrollTop || doc.body.scrollTop;
+
+      // Check if we are near the bottom (within 40px)
+      // Or if the content fits entirely on one page without scrollbar
+      const isAtBottom = (scrollHeight - scrollTop - clientHeight) <= 40 || (scrollHeight <= clientHeight + 10);
+      setShowFooter(isAtBottom);
+    };
+
+    // Run initial check
+    checkScroll();
+
+    // Listeners for scroll and resize inside the iframe
+    doc.addEventListener('scroll', checkScroll, { passive: true });
+    win.addEventListener('scroll', checkScroll, { passive: true });
+    win.addEventListener('resize', checkScroll, { passive: true });
+  };
 
   // Load Bookmarks & Notes from localStorage
   useEffect(() => {
@@ -1083,13 +1125,13 @@ export default function EPUBReader({
               style={{
                 width: '100%',
                 maxWidth: '800px',
-                height: 'calc(100vh - 290px)',
+                flex: 1,
                 borderRadius: '12px',
                 boxShadow: settings.theme === 'dark' ? '0 10px 40px rgba(0,0,0,0.5)' : '0 10px 40px rgba(0,0,0,0.08)',
                 overflow: 'hidden',
                 border: `1px solid ${activeTheme.border}`,
                 backgroundColor: activeTheme.cardBg,
-                transition: 'background-color 0.3s, border 0.3s',
+                transition: 'background-color 0.3s, border 0.3s, height 0.3s ease',
                 display: 'flex',
                 flexDirection: 'column'
               }}
@@ -1097,6 +1139,7 @@ export default function EPUBReader({
               <iframe 
                 ref={iframeRef} 
                 srcDoc={pageHtml}
+                onLoad={handleIframeLoad}
                 style={{ 
                   width: '100%',
                   height: '100%',
@@ -1110,7 +1153,7 @@ export default function EPUBReader({
         </div>
 
         {/* BOTTOM NAVIGATION / PROGRESS BAR */}
-        {!loading && (
+        {!loading && showFooter && (
           <div 
             className="glass-panel" 
             style={{ 

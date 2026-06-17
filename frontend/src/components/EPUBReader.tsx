@@ -1125,7 +1125,8 @@ export default function EPUBReader({
               style={{
                 width: '100%',
                 maxWidth: '800px',
-                flex: 1,
+                height: '100%',
+                minHeight: 0,
                 borderRadius: '12px',
                 boxShadow: settings.theme === 'dark' ? '0 10px 40px rgba(0,0,0,0.5)' : '0 10px 40px rgba(0,0,0,0.08)',
                 overflow: 'hidden',

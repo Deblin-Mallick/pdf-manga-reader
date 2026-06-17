@@ -1112,6 +1112,8 @@ export default function EPUBReader({
             flexDirection: 'column',
             alignItems: 'center',
             padding: '24px',
+            position: 'relative',
+            width: '100%',
             transition: 'background 0.3s'
           }}
         >
@@ -1123,10 +1125,13 @@ export default function EPUBReader({
           ) : (
             <div 
               style={{
-                width: '100%',
+                position: 'absolute',
+                top: '24px',
+                bottom: '24px',
+                left: '24px',
+                right: '24px',
                 maxWidth: '800px',
-                height: '100%',
-                minHeight: 0,
+                margin: '0 auto',
                 borderRadius: '12px',
                 boxShadow: settings.theme === 'dark' ? '0 10px 40px rgba(0,0,0,0.5)' : '0 10px 40px rgba(0,0,0,0.08)',
                 overflow: 'hidden',

@@ -1066,24 +1066,26 @@ export default function EPUBReader({
           style={{
             flex: 1,
             overflow: 'hidden',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'stretch',
-            padding: '24px',
+            position: 'relative',
+            width: '100%',
             transition: 'background 0.3s'
           }}
         >
           {loading ? (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', margin: 'auto' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
               <div style={{ width: '40px', height: '40px', borderRadius: '50%', border: '3px solid var(--border-glass)', borderTopColor: 'var(--accent-primary)', animation: 'spin 1s linear infinite' }} />
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{loadingText}</p>
             </div>
           ) : (
             <div 
               style={{
-                width: '100%',
+                position: 'absolute',
+                top: '24px',
+                bottom: '24px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: 'calc(100% - 48px)',
                 maxWidth: '800px',
-                height: '100%',
                 borderRadius: '12px',
                 boxShadow: settings.theme === 'dark' ? '0 10px 40px rgba(0,0,0,0.5)' : '0 10px 40px rgba(0,0,0,0.08)',
                 overflow: 'hidden',

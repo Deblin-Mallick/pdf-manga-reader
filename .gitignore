@@ -31,5 +31,6 @@ frontend/dist/
 # Backend uploads, covers, and SQLite database
 backend/uploads/
 backend/covers/
-backend/*.db
+backend/data/
+*.db
 node_modules

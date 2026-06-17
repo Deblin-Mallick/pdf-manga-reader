@@ -5,7 +5,7 @@ import JSZip from 'jszip';
 import { Book as BookType, User } from '../App';
 
 // Setup PDF.js worker source via CDN for flawless Vite bundling
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.370/pdf.worker.min.mjs';
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
 
 interface DashboardProps {
   books: BookType[];

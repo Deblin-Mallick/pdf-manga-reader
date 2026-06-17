@@ -276,6 +276,53 @@ async def delete_book(book_id: str, user_id: str = Depends(get_current_user_id))
             
     return {"status": "success", "message": "Book deleted successfully"}
 
+@app.post("/api/books/{book_id}/convert")
+async def convert_existing_book(book_id: str, user_id: str = Depends(get_current_user_id)):
+    """
+    Converts an existing PDF book in the user's library to EPUB format.
+    """
+    with get_db() as conn:
+        book = conn.execute(
+            "SELECT * FROM books WHERE id = ? AND user_id = ?;",
+            (book_id, user_id)
+        ).fetchone()
+        
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found or access denied")
+        
+    if book["type"] != "pdf":
+        raise HTTPException(status_code=400, detail="Only PDF books can be converted to EPUB format.")
+        
+    file_path = os.path.join(UPLOADS_DIR, book["file_path"])
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Original PDF file is missing on the server")
+        
+    try:
+        # Read and decompress gzipped PDF
+        pdf_bytes = b"".join(decompress_and_stream(file_path))
+        
+        # Convert PDF to EPUB
+        from app.epub_converter import convert_pdf_to_epub
+        epub_bytes = convert_pdf_to_epub(pdf_bytes, book["title"])
+        
+        # Overwrite the file on disk with the compressed EPUB bytes
+        compress_and_save(epub_bytes, file_path)
+        
+        # Update type to 'epub' in DB
+        with get_db() as conn:
+            conn.execute("""
+                UPDATE books
+                SET type = 'epub',
+                    last_read_at = datetime('now')
+                WHERE id = ? AND user_id = ?;
+            """, (book_id, user_id))
+            
+            updated_book = conn.execute("SELECT * FROM books WHERE id = ?;", (book_id,)).fetchone()
+            
+        return updated_book
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Conversion failed: {str(e)}")
+
 # Mount frontend compiled static files (if they exist)
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 if os.path.exists(STATIC_DIR):

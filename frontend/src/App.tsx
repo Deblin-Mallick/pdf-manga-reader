@@ -209,6 +209,27 @@ export default function App() {
     }
   };
 
+  const handleBookConvert = async (bookId: string) => {
+    if (!confirm('Would you like to convert this PDF book to EPUB format?')) return;
+    setIsLoading(true);
+    try {
+      const res = await apiFetch(`/api/books/${bookId}/convert`, { method: 'POST' });
+      if (res.ok) {
+        const updated = await res.json();
+        setBooks((prev) => prev.map((b) => (b.id === bookId ? updated : b)));
+        alert('Book successfully converted to EPUB!');
+      } else {
+        const err = await res.json();
+        alert('Conversion failed: ' + (err.detail || 'Unknown error'));
+      }
+    } catch (err) {
+      console.error(err);
+      alert('An error occurred during conversion.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleUpdateProgress = async (
     bookId: string,
     progress: {
@@ -319,6 +340,7 @@ export default function App() {
             onSelectBook={(book) => setCurrentBook(book)} 
             onUploadSuccess={handleBookUploadSuccess}
             onDeleteBook={handleBookDelete}
+            onConvertBook={handleBookConvert}
             onInitGoogleAuth={initGoogleLogin}
           />
         )}

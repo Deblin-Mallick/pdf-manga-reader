@@ -86,6 +86,7 @@ def convert_pdf_to_epub(pdf_bytes: bytes, title: str) -> bytes:
     </navPoint>""")
 
         # Write NCX Table of Contents
+        nav_points_str = "\n".join(nav_points)
         toc_ncx = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE ncx PUBLIC "-//NISO//DTD NCX 2005-1//EN" "http://www.daisy.org/z3986/2005/ncx-2005-1.dtd">
 <ncx xmlns="http://www.daisy.org/z3986/2005/ncx" version="2005-1">
@@ -99,12 +100,14 @@ def convert_pdf_to_epub(pdf_bytes: bytes, title: str) -> bytes:
     <text>{html.escape(title)}</text>
   </docTitle>
   <navMap>
-{"\n".join(nav_points)}
+{nav_points_str}
   </navMap>
 </ncx>"""
         epub.writestr("OEBPS/toc.ncx", toc_ncx)
 
         # Write OPF Manifest package schema
+        manifest_items_str = "\n".join(manifest_items)
+        spine_items_str = "\n".join(spine_items)
         content_opf = f"""<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookID" version="2.0">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
@@ -115,10 +118,10 @@ def convert_pdf_to_epub(pdf_bytes: bytes, title: str) -> bytes:
   </metadata>
   <manifest>
     <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
-{"\n".join(manifest_items)}
+{manifest_items_str}
   </manifest>
   <spine toc="ncx">
-{"\n".join(spine_items)}
+{spine_items_str}
   </spine>
 </package>"""
         epub.writestr("OEBPS/content.opf", content_opf)

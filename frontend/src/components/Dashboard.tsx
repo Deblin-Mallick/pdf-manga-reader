@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Trash2, Book, FileText, Search, Play, Plus, BookOpen, LogIn } from 'lucide-react';
+import { Upload, Trash2, Book, FileText, Search, Play, Plus, BookOpen, LogIn, RefreshCw } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import JSZip from 'jszip';
 import { Book as BookType, User } from '../App';
@@ -14,6 +14,7 @@ interface DashboardProps {
   onSelectBook: (book: BookType) => void;
   onUploadSuccess: (book: BookType) => void;
   onDeleteBook: (bookId: string) => void;
+  onConvertBook: (bookId: string) => void;
   onInitGoogleAuth: () => void;
 }
 
@@ -24,6 +25,7 @@ export default function Dashboard({
   onSelectBook,
   onUploadSuccess,
   onDeleteBook,
+  onConvertBook,
   onInitGoogleAuth,
 }: DashboardProps) {
   const [isDragging, setIsDragging] = useState(false);
@@ -463,6 +465,15 @@ export default function Dashboard({
                       >
                         <Play size={16} fill="white" /> Read
                       </button>
+                      {book.type === 'pdf' && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); onConvertBook(book.id); }}
+                          style={{ backgroundColor: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)', color: 'var(--accent-primary)', padding: '10px', borderRadius: '50%' }}
+                          title="Convert PDF to EPUB"
+                        >
+                          <RefreshCw size={16} />
+                        </button>
+                      )}
                       <button 
                         onClick={(e) => { e.stopPropagation(); onDeleteBook(book.id); }}
                         style={{ backgroundColor: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#ef4444', padding: '10px', borderRadius: '50%' }}

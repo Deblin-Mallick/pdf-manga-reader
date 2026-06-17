@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
 import { 
   ArrowLeft, ChevronLeft, ChevronRight, Sun, Moon, Eye, 
   ZoomIn, ZoomOut, Settings, Menu, X, BookOpen, Search, Bookmark, Edit, Trash2, Sliders
@@ -55,7 +55,19 @@ interface SearchResult {
   snippet: string;
 }
 
-const themeStyles = {
+interface ThemeStyle {
+  bg: string;
+  cardBg: string;
+  text: string;
+  heading: string;
+  hr: string;
+  sidebarBg: string;
+  sidebarText: string;
+  border: string;
+  activeBg: string;
+}
+
+const themeStyles: Record<'light' | 'dark' | 'sepia', ThemeStyle> = {
   light: {
     bg: '#F8F6F1',       // Paper-like background
     cardBg: '#ffffff',   // White card reading surface
@@ -393,7 +405,7 @@ export default function EPUBReader({
       let htmlContent = await pageFile.async('text');
 
       // Clean up previous blob URLs
-      blobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      blobUrlsRef.current.forEach((url: string) => URL.revokeObjectURL(url));
       blobUrlsRef.current = [];
 
       // Parse HTML to resolve images
@@ -508,7 +520,7 @@ export default function EPUBReader({
   // Clean up Object URLs on unmount
   useEffect(() => {
     return () => {
-      blobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      blobUrlsRef.current.forEach((url: string) => URL.revokeObjectURL(url));
     };
   }, []);
 
@@ -536,13 +548,13 @@ export default function EPUBReader({
   // Navigation handlers
   const handleNextPage = useCallback(() => {
     if (currentPage < spineHrefs.length) {
-      setCurrentPage((prev) => prev + 1);
+      setCurrentPage((prev: number) => prev + 1);
     }
   }, [currentPage, spineHrefs.length]);
 
   const handlePrevPage = useCallback(() => {
     if (currentPage > 1) {
-      setCurrentPage((prev) => prev - 1);
+      setCurrentPage((prev: number) => prev - 1);
     }
   }, [currentPage]);
 
@@ -563,18 +575,18 @@ export default function EPUBReader({
   const currentChapterTitle = () => {
     if (spineHrefs.length === 0 || toc.length === 0) return 'Reading';
     const currentPath = spineHrefs[currentPage - 1];
-    const matchingTOC = toc.find(item => item.href === currentPath);
+    const matchingTOC = toc.find((item: TOCItem) => item.href === currentPath);
     return matchingTOC ? matchingTOC.title : toc[0]?.title || 'Chapter';
   };
 
   // Add / Remove bookmark for current chapter
   const toggleBookmark = () => {
     const chapterTitle = currentChapterTitle();
-    const hasBookmark = bookmarks.some(b => b.chapterIndex === currentPage);
+    const hasBookmark = bookmarks.some((b: BookmarkItem) => b.chapterIndex === currentPage);
     let updated: BookmarkItem[];
 
     if (hasBookmark) {
-      updated = bookmarks.filter(b => b.chapterIndex !== currentPage);
+      updated = bookmarks.filter((b: BookmarkItem) => b.chapterIndex !== currentPage);
     } else {
       const newB: BookmarkItem = {
         id: Math.random().toString(),
@@ -611,7 +623,7 @@ export default function EPUBReader({
 
   // Delete note
   const handleDeleteNote = (id: string) => {
-    const updated = notes.filter(n => n.id !== id);
+    const updated = notes.filter((n: NoteItem) => n.id !== id);
     setNotes(updated);
     localStorage.setItem(`reader_notes_${book.id}`, JSON.stringify(updated));
   };
@@ -642,7 +654,7 @@ export default function EPUBReader({
             const snippet = cleanText.substring(start, end).replace(/\s+/g, ' ').trim();
             
             // Find title of chapter
-            const chTitle = toc.find(item => item.href === path)?.title || `Chapter ${i + 1}`;
+            const chTitle = toc.find((item: TOCItem) => item.href === path)?.title || `Chapter ${i + 1}`;
 
             results.push({
               chapterIndex: i + 1,

@@ -120,15 +120,6 @@ export default function PDFReader({
 
       await renderTask.promise;
       activeRenderTaskRef.current = null;
-
-      // Save progress to backend
-      onUpdateProgress(book.id, {
-        current_page: currentPage,
-        zoom: zoom,
-        view_mode: viewMode,
-        scroll_position: containerRef.current.scrollTop || 0,
-        reading_direction: 'ltr',
-      });
     } catch (err: any) {
       if (err.name === 'RenderingCancelledException' || err.message === 'Rendering cancelled, page-switch') {
         // Safe to ignore since we canceled it purposefully
@@ -136,7 +127,25 @@ export default function PDFReader({
       }
       console.error('Error rendering page:', err);
     }
-  }, [pdf, currentPage, zoom, viewMode, book.id, onUpdateProgress]);
+  }, [pdf, currentPage, zoom, viewMode]);
+
+  // Sync progress to backend when page, zoom, or viewMode changes
+  useEffect(() => {
+    if (!pdf) return;
+    if (
+      currentPage !== book.current_page ||
+      zoom !== book.zoom ||
+      viewMode !== book.view_mode
+    ) {
+      onUpdateProgress(book.id, {
+        current_page: currentPage,
+        zoom: zoom,
+        view_mode: viewMode,
+        scroll_position: containerRef.current?.scrollTop || 0,
+        reading_direction: 'ltr',
+      });
+    }
+  }, [currentPage, zoom, viewMode, book.id, pdf, onUpdateProgress]);
 
   // Trigger page render when page, zoom, viewMode, or pdf changes
   useEffect(() => {

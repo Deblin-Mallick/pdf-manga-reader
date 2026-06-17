@@ -230,7 +230,7 @@ export default function App() {
     }
   };
 
-  const handleUpdateProgress = async (
+  const handleUpdateProgress = useCallback(async (
     bookId: string,
     progress: {
       current_page: number;
@@ -250,15 +250,13 @@ export default function App() {
         const updated = await res.json();
         // Update books list in background
         setBooks((prev) => prev.map((b) => (b.id === bookId ? updated : b)));
-        // If it's the active book, update current state
-        if (currentBook && currentBook.id === bookId) {
-          setCurrentBook(updated);
-        }
+        // If it's the active book, update current state using functional update
+        setCurrentBook((curr) => (curr && curr.id === bookId ? updated : curr));
       }
     } catch (err) {
       console.error('Failed to sync progress:', err);
     }
-  };
+  }, [apiFetch]);
 
   return (
     <div className="app-container">

@@ -496,6 +496,65 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
             }}
           />
         )}
+
+        {/* ── Green circle home button — top-left, sticky ── */}
+        {!loading && (
+          <button
+            onClick={onBack}
+            title="Back to Library"
+            className="pdf-home-btn"
+            style={{
+              position: 'sticky',
+              top: '12px',
+              left: '12px',
+              alignSelf: 'flex-start',
+              marginLeft: '0',
+              marginBottom: '-44px',   // pull back so it doesn't push content
+              zIndex: 20,
+              width: '40px',
+              height: '40px',
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+              boxShadow: '0 4px 16px rgba(34,197,94,0.45)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: '2px solid rgba(255,255,255,0.18)',
+              cursor: 'pointer',
+              transition: 'transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease',
+              flexShrink: 0,
+            }}
+          >
+            {/* SleekReader book icon — same svg used in the app header */}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+            </svg>
+          </button>
+        )}
+
+        {/* ── Hover-triggered zoom widget — bottom-left ── */}
+        {!loading && (
+          <div className="pdf-zoom-anchor">
+            <div className="pdf-zoom-pill">
+              <button
+                onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}
+                className="pdf-zoom-btn"
+                title="Zoom out"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </button>
+              <span className="pdf-zoom-pct">{Math.round(zoom * 100)}%</span>
+              <button
+                onClick={() => setZoom((z) => Math.min(3.0, z + 0.25))}
+                className="pdf-zoom-btn"
+                title="Zoom in"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <style>{`
@@ -503,6 +562,70 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
         @keyframes spin {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
+        }
+
+        /* ── Green home button ── */
+        .pdf-home-btn:hover {
+          transform: scale(1.12);
+          box-shadow: 0 6px 24px rgba(34,197,94,0.65) !important;
+        }
+        .pdf-home-btn:active {
+          transform: scale(0.95);
+        }
+
+        /* ── Zoom anchor (hitbox) ── */
+        .pdf-zoom-anchor {
+          position: sticky;
+          bottom: 12px;
+          left: 12px;
+          align-self: flex-start;
+          margin-top: -52px;     /* pull up so it doesn’t push content */
+          margin-left: 0;
+          z-index: 20;
+          padding: 20px 20px 4px 4px;  /* invisible extra hover area */
+          width: fit-content;
+        }
+        .pdf-zoom-pill {
+          display: flex;
+          align-items: center;
+          gap: 2px;
+          background: rgba(15,15,25,0.88);
+          backdrop-filter: blur(14px);
+          -webkit-backdrop-filter: blur(14px);
+          border: 1px solid rgba(255,255,255,0.13);
+          border-radius: 50px;
+          padding: 6px 10px;
+          box-shadow: 0 8px 28px rgba(0,0,0,0.55);
+          opacity: 0;
+          transform: translateY(8px);
+          transition: opacity 0.28s ease, transform 0.28s ease;
+          pointer-events: none;
+        }
+        .pdf-zoom-anchor:hover .pdf-zoom-pill {
+          opacity: 1;
+          transform: translateY(0);
+          pointer-events: auto;
+        }
+        .pdf-zoom-btn {
+          color: rgba(255,255,255,0.75);
+          padding: 5px 9px;
+          border-radius: 50px;
+          transition: color 0.15s, background 0.15s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .pdf-zoom-btn:hover {
+          color: #fff;
+          background: rgba(255,255,255,0.08);
+        }
+        .pdf-zoom-pct {
+          font-size: 0.82rem;
+          font-weight: 700;
+          color: #fff;
+          min-width: 40px;
+          text-align: center;
+          letter-spacing: 0.02em;
         }
       `}</style>
     </div>

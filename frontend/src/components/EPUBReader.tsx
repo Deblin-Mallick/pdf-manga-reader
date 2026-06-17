@@ -466,7 +466,7 @@ export default function EPUBReader({
             font-family: ${fontStack} !important;
             font-size: ${settings.fontSize}px !important;
             line-height: ${settings.lineHeight} !important;
-            padding: 40px 60px !important;
+            padding: 40px 60px 100px 60px !important;
             margin: 0 auto !important;
             max-width: 700px !important;
             transition: background-color 0.25s ease, color 0.25s ease !important;
@@ -1169,17 +1169,26 @@ export default function EPUBReader({
         </div>
 
         {/* BOTTOM NAVIGATION / PROGRESS BAR */}
-        {!loading && showFooter && (
+        {!loading && (
           <div 
             className="glass-panel" 
             style={{ 
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
               display: 'flex', 
               justifyContent: 'space-between', 
               alignItems: 'center', 
               padding: '12px 24px', 
               borderTop: `1px solid ${activeTheme.border}`,
               backgroundColor: activeTheme.cardBg,
-              zIndex: 5
+              zIndex: 10,
+              boxShadow: settings.theme === 'dark' ? '0 -8px 24px rgba(0,0,0,0.4)' : '0 -8px 24px rgba(0,0,0,0.06)',
+              transform: showFooter ? 'translateY(0)' : 'translateY(100%)',
+              opacity: showFooter ? 1 : 0,
+              visibility: showFooter ? 'visible' : 'hidden',
+              transition: 'transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease, visibility 0.3s'
             }}
           >
             {/* Previous */}

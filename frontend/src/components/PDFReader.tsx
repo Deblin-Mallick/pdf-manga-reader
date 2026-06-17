@@ -220,24 +220,6 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
     return () => window.removeEventListener('resize', renderPage);
   }, [renderPage]);
 
-  // ── Keyboard navigation ───────────────────────────────────────────────────
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight') {
-        if (scrollMode) jumpToPage(currentPage + 1);
-        else setCurrentPage((p) => Math.min(totalPages, p + 1));
-      } else if (e.key === 'ArrowLeft') {
-        if (scrollMode) jumpToPage(currentPage - 1);
-        else setCurrentPage((p) => Math.max(1, p - 1));
-      } else if (e.key === ' ') {
-        e.preventDefault();
-        if (containerRef.current) containerRef.current.scrollTop += 200;
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [totalPages, scrollMode, currentPage, jumpToPage]);
-
   // ── Jump to a specific page (scroll mode only, explicit user action) ────────
   const jumpToPage = useCallback((page: number) => {
     const clamped = Math.max(1, Math.min(totalPages, page));
@@ -261,6 +243,24 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
       setCurrentPage(page);
     }
   }, []);
+
+  // ── Keyboard navigation ───────────────────────────────────────────────────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight') {
+        if (scrollMode) jumpToPage(currentPage + 1);
+        else setCurrentPage((p) => Math.min(totalPages, p + 1));
+      } else if (e.key === 'ArrowLeft') {
+        if (scrollMode) jumpToPage(currentPage - 1);
+        else setCurrentPage((p) => Math.max(1, p - 1));
+      } else if (e.key === ' ') {
+        e.preventDefault();
+        if (containerRef.current) containerRef.current.scrollTop += 200;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [totalPages, scrollMode, currentPage, jumpToPage]);
 
   const Divider = () => (
     <div style={{ width: '1px', height: '20px', backgroundColor: 'rgba(255,255,255,0.12)', flexShrink: 0 }} />

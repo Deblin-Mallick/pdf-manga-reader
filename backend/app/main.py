@@ -1,0 +1,273 @@
+import os
+import uuid
+from typing import Optional
+from fastapi import FastAPI, Depends, Form, File, UploadFile, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse, JSONResponse
+from pydantic import BaseModel
+from contextlib import asynccontextmanager
+
+from app.db import init_db, get_db
+from app.auth import verify_google_token, create_session_token, get_current_user_id
+from app.compression import compress_and_save, decompress_and_stream
+
+# Setup directories relative to the backend root
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+UPLOADS_DIR = os.path.join(BASE_DIR, "uploads")
+COVERS_DIR = os.path.join(BASE_DIR, "covers")
+
+os.makedirs(UPLOADS_DIR, exist_ok=True)
+os.makedirs(COVERS_DIR, exist_ok=True)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Initialize SQLite database
+    init_db()
+    yield
+
+app = FastAPI(
+    title="PDF & Manga Reader API",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# Configure CORS for local development and containerization
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allowed since Vite will proxy requests or run on local hosts
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Mount covers folder to serve cover images statically
+app.mount("/covers", StaticFiles(directory=COVERS_DIR), name="covers")
+
+class GoogleLoginRequest(BaseModel):
+    id_token: str
+
+class ProgressUpdateRequest(BaseModel):
+    current_page: int
+    zoom: float
+    view_mode: str
+    scroll_position: int
+    reading_direction: str
+
+@app.post("/api/auth/google")
+async def google_auth(req: GoogleLoginRequest):
+    """
+    Verifies a Google credential token, registers/gets user in SQLite, and returns a session JWT.
+    """
+    try:
+        user_info = verify_google_token(req.id_token)
+        user_id = user_info["id"]
+        
+        # Save or update user in SQLite
+        with get_db() as conn:
+            conn.execute("""
+                INSERT INTO users (id, email, name, picture)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    email=excluded.email,
+                    name=excluded.name,
+                    picture=excluded.picture;
+            """, (user_id, user_info["email"], user_info["name"], user_info["picture"]))
+            
+        # Create backend JWT session token
+        session_token = create_session_token(user_id)
+        
+        return {
+            "token": session_token,
+            "user": {
+                "id": user_id,
+                "email": user_info["email"],
+                "name": user_info["name"],
+                "picture": user_info["picture"]
+            }
+        }
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=400, detail=f"Authentication failed: {str(e)}")
+
+@app.get("/api/auth/me")
+async def get_me(user_id: str = Depends(get_current_user_id)):
+    """
+    Returns profile information of the current authenticated user.
+    """
+    with get_db() as conn:
+        user = conn.execute("SELECT * FROM users WHERE id = ?;", (user_id,)).fetchone()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return user
+
+@app.get("/api/books")
+async def get_books(user_id: str = Depends(get_current_user_id)):
+    """
+    Lists all books matching the current user context.
+    """
+    with get_db() as conn:
+        books = conn.execute(
+            "SELECT * FROM books WHERE user_id = ? ORDER BY last_read_at DESC;",
+            (user_id,)
+        ).fetchall()
+        return books
+
+@app.post("/api/books")
+async def upload_book(
+    title: str = Form(...),
+    type: str = Form(...),
+    total_pages: int = Form(...),
+    file: UploadFile = File(...),
+    cover: Optional[UploadFile] = File(None),
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    Uploads a new book/manga. Files are compressed to .gz on disk.
+    Covers are saved in covers/ directory.
+    """
+    book_id = str(uuid.uuid4())
+    
+    # 1. Compress and save file data to uploads/
+    file_bytes = await file.read()
+    file_name = f"{book_id}.gz"
+    file_path = os.path.join(UPLOADS_DIR, file_name)
+    compress_and_save(file_bytes, file_path)
+    
+    # 2. Save cover image to covers/ if provided
+    cover_url_path = ""
+    if cover:
+        cover_bytes = await cover.read()
+        cover_name = f"{book_id}.jpg"
+        cover_path = os.path.join(COVERS_DIR, cover_name)
+        with open(cover_path, "wb") as f:
+            f.write(cover_bytes)
+        cover_url_path = f"/covers/{cover_name}"
+        
+    # 3. Save to database
+    with get_db() as conn:
+        conn.execute("""
+            INSERT INTO books (id, user_id, title, type, file_path, cover_path, total_pages)
+            VALUES (?, ?, ?, ?, ?, ?, ?);
+        """, (book_id, user_id, title, type, file_name, cover_url_path, total_pages))
+        
+        new_book = conn.execute("SELECT * FROM books WHERE id = ?;", (book_id,)).fetchone()
+        
+    return new_book
+
+@app.get("/api/books/{book_id}/file")
+async def get_book_file(book_id: str, user_id: str = Depends(get_current_user_id)):
+    """
+    Streams the decompressed book file directly to the client.
+    """
+    with get_db() as conn:
+        book = conn.execute(
+            "SELECT * FROM books WHERE id = ? AND user_id = ?;",
+            (book_id, user_id)
+        ).fetchone()
+        
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found or access denied")
+        
+    file_path = os.path.join(UPLOADS_DIR, book["file_path"])
+    
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Book file missing on server")
+        
+    # Set headers for PDF or ZIP response
+    media_type = "application/pdf" if book["type"] == "pdf" else "application/zip"
+    
+    return StreamingResponse(
+        decompress_and_stream(file_path),
+        media_type=media_type,
+        headers={"Content-Disposition": f"inline; filename={book['title']}.{book['type']}"}
+    )
+
+@app.put("/api/books/{book_id}/progress")
+async def update_progress(
+    book_id: str,
+    update: ProgressUpdateRequest,
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    Updates the active page, zoom level, and reading layout properties for a book.
+    """
+    with get_db() as conn:
+        # Check ownership
+        book = conn.execute(
+            "SELECT id FROM books WHERE id = ? AND user_id = ?;",
+            (book_id, user_id)
+        ).fetchone()
+        
+        if not book:
+            raise HTTPException(status_code=404, detail="Book not found or access denied")
+            
+        conn.execute("""
+            UPDATE books
+            SET current_page = ?,
+                zoom = ?,
+                view_mode = ?,
+                scroll_position = ?,
+                reading_direction = ?,
+                last_read_at = datetime('now')
+            WHERE id = ? AND user_id = ?;
+        """, (
+            update.current_page,
+            update.zoom,
+            update.view_mode,
+            update.scroll_position,
+            update.reading_direction,
+            book_id,
+            user_id
+        ))
+        
+        updated_book = conn.execute("SELECT * FROM books WHERE id = ?;", (book_id,)).fetchone()
+        
+    return updated_book
+
+@app.delete("/api/books/{book_id}")
+async def delete_book(book_id: str, user_id: str = Depends(get_current_user_id)):
+    """
+    Deletes a book, removing it from the SQLite database and deleting its files from disk.
+    """
+    with get_db() as conn:
+        book = conn.execute(
+            "SELECT * FROM books WHERE id = ? AND user_id = ?;",
+            (book_id, user_id)
+        ).fetchone()
+        
+        if not book:
+            raise HTTPException(status_code=404, detail="Book not found or access denied")
+            
+        # Delete from DB
+        conn.execute("DELETE FROM books WHERE id = ?;", (book_id,))
+        
+    # Delete file from disk
+    file_path = os.path.join(UPLOADS_DIR, book["file_path"])
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        
+    # Delete cover from disk
+    if book["cover_path"]:
+        cover_filename = os.path.basename(book["cover_path"])
+        cover_path = os.path.join(COVERS_DIR, cover_filename)
+        if os.path.exists(cover_path):
+            os.remove(cover_path)
+            
+    return {"status": "success", "message": "Book deleted successfully"}
+
+# Mount frontend compiled static files (if they exist)
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+if os.path.exists(STATIC_DIR):
+    from fastapi.responses import FileResponse
+    
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+
+    # Fallback to index.html for React client-side routing
+    @app.exception_handler(404)
+    async def spa_fallback(request, exc):
+        if request.url.path.startswith("/api"):
+            return JSONResponse(status_code=404, content={"detail": "API endpoint not found"})
+        return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+

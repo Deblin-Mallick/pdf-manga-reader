@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Settings, LogOut, BookOpen, AlertCircle } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import PDFReader from './components/PDFReader';
@@ -42,8 +42,8 @@ export default function App() {
   const [currentBook, setCurrentBook] = useState<Book | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  // ID of the last-opened book, persisted across refreshes within the same tab
-  const [pendingBookId, setPendingBookId] = useState<string | null>(
+  // ID of the last-opened book — ref so it never triggers re-renders
+  const pendingBookIdRef = useRef<string | null>(
     sessionStorage.getItem('reader_open_book_id')
   );
   
@@ -84,13 +84,11 @@ export default function App() {
           const data: Book[] = await res.json();
           setBooks(data);
           // Restore open book for guest users too
-          setPendingBookId((pending) => {
-            if (pending) {
-              const restored = data.find((b) => b.id === pending);
-              if (restored) setCurrentBook(restored);
-            }
-            return null;
-          });
+          if (pendingBookIdRef.current) {
+            const restored = data.find((b) => b.id === pendingBookIdRef.current);
+            if (restored) setCurrentBook(restored);
+            pendingBookIdRef.current = null;
+          }
         }
       } catch (err) {
         console.error('Failed to fetch guest books:', err);
@@ -111,13 +109,11 @@ export default function App() {
         const booksData: Book[] = await booksRes.json();
         setBooks(booksData);
         // Restore the previously open book after a page refresh
-        setPendingBookId((pending) => {
-          if (pending) {
-            const restored = booksData.find((b) => b.id === pending);
-            if (restored) setCurrentBook(restored);
-          }
-          return null;
-        });
+        if (pendingBookIdRef.current) {
+          const restored = booksData.find((b) => b.id === pendingBookIdRef.current);
+          if (restored) setCurrentBook(restored);
+          pendingBookIdRef.current = null;
+        }
       }
     } catch (err) {
       console.error('Failed to load user data:', err);

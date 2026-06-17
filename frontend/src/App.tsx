@@ -3,6 +3,7 @@ import { Settings, LogOut, BookOpen, AlertCircle } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import PDFReader from './components/PDFReader';
 import MangaReader from './components/MangaReader';
+import EPUBReader from './components/EPUBReader';
 
 declare global {
   interface Window {
@@ -14,7 +15,7 @@ export interface Book {
   id: string;
   user_id: string;
   title: string;
-  type: 'pdf' | 'cbz' | 'zip';
+  type: 'pdf' | 'cbz' | 'zip' | 'epub';
   file_path: string;
   cover_path: string;
   added_at: string;
@@ -289,6 +290,13 @@ export default function App() {
           /* Reader Section */
           currentBook.type === 'pdf' ? (
             <PDFReader 
+              book={currentBook} 
+              token={token}
+              onBack={() => { setCurrentBook(null); fetchUserData(); }} 
+              onUpdateProgress={handleUpdateProgress} 
+            />
+          ) : currentBook.type === 'epub' ? (
+            <EPUBReader 
               book={currentBook} 
               token={token}
               onBack={() => { setCurrentBook(null); fetchUserData(); }} 

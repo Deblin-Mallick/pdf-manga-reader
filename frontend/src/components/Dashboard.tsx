@@ -31,6 +31,7 @@ export default function Dashboard({
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'pdf' | 'cbz' | 'completed'>('all');
+  const [convertToEpub, setConvertToEpub] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Trigger Google Login Button rendering if not logged in
@@ -173,6 +174,9 @@ export default function Dashboard({
       if (coverBlob) {
         formData.append('cover', coverBlob, 'cover.jpg');
       }
+      if (isPdf && convertToEpub) {
+        formData.append('convert_to_epub', 'true');
+      }
 
       // XHR upload to capture progress
       const xhr = new XMLHttpRequest();
@@ -225,7 +229,7 @@ export default function Dashboard({
     const matchesSearch = book.title.toLowerCase().includes(searchQuery.toLowerCase());
     if (!matchesSearch) return false;
 
-    if (activeTab === 'pdf') return book.type === 'pdf';
+    if (activeTab === 'pdf') return book.type === 'pdf' || book.type === 'epub';
     if (activeTab === 'cbz') return book.type === 'cbz';
     if (activeTab === 'completed') return book.current_page >= book.total_pages;
     
@@ -295,6 +299,34 @@ export default function Dashboard({
             <button className="btn-primary" type="button" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}>
               <Plus size={16} /> Choose File
             </button>
+            <div 
+              onClick={(e) => e.stopPropagation()} 
+              style={{ 
+                marginTop: '8px', 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px', 
+                fontSize: '0.85rem', 
+                color: 'var(--text-secondary)',
+                cursor: 'default'
+              }}
+            >
+              <input 
+                type="checkbox" 
+                id="epub-convert-checkbox" 
+                checked={convertToEpub} 
+                onChange={(e) => setConvertToEpub(e.target.checked)}
+                style={{ 
+                  cursor: 'pointer',
+                  accentColor: 'var(--accent-primary)',
+                  width: '16px',
+                  height: '16px'
+                }}
+              />
+              <label htmlFor="epub-convert-checkbox" style={{ cursor: 'pointer', userSelect: 'none' }}>
+                Convert PDF uploads to EPUB format
+              </label>
+            </div>
           </>
         )}
       </section>
@@ -348,7 +380,7 @@ export default function Dashboard({
                   border: activeTab === tab ? '1px solid var(--border-glass)' : '1px solid transparent',
                 }}
               >
-                {tab === 'cbz' ? 'Manga (CBZ)' : tab === 'pdf' ? 'Books (PDF)' : tab}
+                {tab === 'cbz' ? 'Manga (CBZ)' : tab === 'pdf' ? 'Books (PDF/EPUB)' : tab}
               </button>
             ))}
           </div>

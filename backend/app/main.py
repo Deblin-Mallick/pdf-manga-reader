@@ -121,6 +121,7 @@ async def upload_book(
     total_pages: int = Form(...),
     file: UploadFile = File(...),
     cover: Optional[UploadFile] = File(None),
+    convert_to_epub: bool = Form(False),
     user_id: str = Depends(get_current_user_id)
 ):
     """
@@ -131,9 +132,22 @@ async def upload_book(
     
     # 1. Compress and save file data to uploads/
     file_bytes = await file.read()
+    
+    final_type = type
+    final_file_bytes = file_bytes
+    final_total_pages = total_pages
+    
+    if type == "pdf" and convert_to_epub:
+        try:
+            from app.epub_converter import convert_pdf_to_epub
+            final_file_bytes = convert_pdf_to_epub(file_bytes, title)
+            final_type = "epub"
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"PDF to EPUB conversion failed: {str(e)}")
+
     file_name = f"{book_id}.gz"
     file_path = os.path.join(UPLOADS_DIR, file_name)
-    compress_and_save(file_bytes, file_path)
+    compress_and_save(final_file_bytes, file_path)
     
     # 2. Save cover image to covers/ if provided
     cover_url_path = ""
@@ -150,7 +164,7 @@ async def upload_book(
         conn.execute("""
             INSERT INTO books (id, user_id, title, type, file_path, cover_path, total_pages)
             VALUES (?, ?, ?, ?, ?, ?, ?);
-        """, (book_id, user_id, title, type, file_name, cover_url_path, total_pages))
+        """, (book_id, user_id, title, final_type, file_name, cover_url_path, final_total_pages))
         
         new_book = conn.execute("SELECT * FROM books WHERE id = ?;", (book_id,)).fetchone()
         
@@ -175,8 +189,13 @@ async def get_book_file(book_id: str, user_id: str = Depends(get_current_user_id
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Book file missing on server")
         
-    # Set headers for PDF or ZIP response
-    media_type = "application/pdf" if book["type"] == "pdf" else "application/zip"
+    # Set headers based on format type
+    if book["type"] == "pdf":
+        media_type = "application/pdf"
+    elif book["type"] == "epub":
+        media_type = "application/epub+zip"
+    else:
+        media_type = "application/zip"
     
     return StreamingResponse(
         decompress_and_stream(file_path),

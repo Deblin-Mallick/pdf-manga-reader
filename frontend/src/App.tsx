@@ -42,6 +42,10 @@ export default function App() {
   const [currentBook, setCurrentBook] = useState<Book | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  // ID of the last-opened book, persisted across refreshes within the same tab
+  const [pendingBookId, setPendingBookId] = useState<string | null>(
+    sessionStorage.getItem('reader_open_book_id')
+  );
   
   // Local configuration for Google Client ID
   const [googleClientId, setGoogleClientId] = useState<string>(
@@ -77,8 +81,16 @@ export default function App() {
       try {
         const res = await fetch('/api/books');
         if (res.ok) {
-          const data = await res.json();
+          const data: Book[] = await res.json();
           setBooks(data);
+          // Restore open book for guest users too
+          setPendingBookId((pending) => {
+            if (pending) {
+              const restored = data.find((b) => b.id === pending);
+              if (restored) setCurrentBook(restored);
+            }
+            return null;
+          });
         }
       } catch (err) {
         console.error('Failed to fetch guest books:', err);
@@ -96,8 +108,16 @@ export default function App() {
       
       const booksRes = await apiFetch('/api/books');
       if (booksRes.ok) {
-        const booksData = await booksRes.json();
+        const booksData: Book[] = await booksRes.json();
         setBooks(booksData);
+        // Restore the previously open book after a page refresh
+        setPendingBookId((pending) => {
+          if (pending) {
+            const restored = booksData.find((b) => b.id === pending);
+            if (restored) setCurrentBook(restored);
+          }
+          return null;
+        });
       }
     } catch (err) {
       console.error('Failed to load user data:', err);
@@ -259,9 +279,19 @@ export default function App() {
   }, [apiFetch]);
 
   const handleBack = useCallback(() => {
+    sessionStorage.removeItem('reader_open_book_id');
     setCurrentBook(null);
     fetchUserData();
   }, [fetchUserData]);
+
+  // Persist the open book ID whenever it changes
+  useEffect(() => {
+    if (currentBook) {
+      sessionStorage.setItem('reader_open_book_id', currentBook.id);
+    } else {
+      sessionStorage.removeItem('reader_open_book_id');
+    }
+  }, [currentBook]);
 
   return (
     <div className="app-container">

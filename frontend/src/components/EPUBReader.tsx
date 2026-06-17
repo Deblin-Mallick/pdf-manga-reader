@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   ArrowLeft, ChevronLeft, ChevronRight, Sun, Moon, Eye, 
   ZoomIn, ZoomOut, Settings, Menu, X, BookOpen, Search, Bookmark, Edit, Trash2, Sliders

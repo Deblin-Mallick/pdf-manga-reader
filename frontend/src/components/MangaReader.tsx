@@ -286,7 +286,7 @@ export default function MangaReader({
         <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }} className="hover-white">
           <ArrowLeft size={18} /> Back
         </button>
-        <span style={{ fontSize: '0.95rem', fontWeight: 500, color: '#fff', maxWidth: '300px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <span style={{ fontSize: '0.95rem', fontWeight: 500, color: '#fff', flex: 1, minWidth: 0, maxWidth: '40%', textAlign: 'center', margin: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {book.title}
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>

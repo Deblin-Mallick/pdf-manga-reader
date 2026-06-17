@@ -569,8 +569,9 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
           100% { transform: rotate(360deg); }
         }
 
-        /* ── Hide overlay controls on phones & tablets ── */
-        @media (max-width: 1024px) {
+        /* ── Hide overlay controls on touch screens (Android / iOS) ── */
+        /* pointer:coarse = touch input; hover:none = no mouse hover capability */
+        @media (hover: none) and (pointer: coarse) {
           .pdf-home-btn,
           .pdf-zoom-anchor {
             display: none !important;

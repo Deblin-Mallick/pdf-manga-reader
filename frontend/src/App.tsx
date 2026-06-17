@@ -258,6 +258,11 @@ export default function App() {
     }
   }, [apiFetch]);
 
+  const handleBack = useCallback(() => {
+    setCurrentBook(null);
+    fetchUserData();
+  }, [fetchUserData]);
+
   return (
     <div className="app-container">
       {/* Header Panel */}
@@ -311,21 +316,21 @@ export default function App() {
             <PDFReader 
               book={currentBook} 
               token={token}
-              onBack={() => { setCurrentBook(null); fetchUserData(); }} 
+              onBack={handleBack} 
               onUpdateProgress={handleUpdateProgress} 
             />
           ) : currentBook.type === 'epub' ? (
             <EPUBReader 
               book={currentBook} 
               token={token}
-              onBack={() => { setCurrentBook(null); fetchUserData(); }} 
+              onBack={handleBack} 
               onUpdateProgress={handleUpdateProgress} 
             />
           ) : (
             <MangaReader 
               book={currentBook} 
               token={token}
-              onBack={() => { setCurrentBook(null); fetchUserData(); }} 
+              onBack={handleBack} 
               onUpdateProgress={handleUpdateProgress} 
             />
           )

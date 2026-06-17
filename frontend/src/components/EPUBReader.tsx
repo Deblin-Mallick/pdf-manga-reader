@@ -448,7 +448,7 @@ export default function EPUBReader({
       }
 
       // Apply Google fonts + styles
-      const activeTheme = themeStyles[settings.theme];
+      const activeTheme = themeStyles[settings.theme as 'light' | 'dark' | 'sepia'];
       const fontStack = settings.fontFamily === 'literata' 
         ? "'Literata', Georgia, serif" 
         : settings.fontFamily === 'georgia' 
@@ -672,7 +672,7 @@ export default function EPUBReader({
     setSearchLoading(false);
   };
 
-  const activeTheme = themeStyles[settings.theme];
+  const activeTheme = themeStyles[settings.theme as 'light' | 'dark' | 'sepia'];
   const percentComplete = Math.round(((currentPage) / (spineHrefs.length || 1)) * 100);
 
   return (

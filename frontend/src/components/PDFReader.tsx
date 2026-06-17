@@ -564,6 +564,14 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
           100% { transform: rotate(360deg); }
         }
 
+        /* ── Hide overlay controls on phones & tablets ── */
+        @media (max-width: 1024px) {
+          .pdf-home-btn,
+          .pdf-zoom-anchor {
+            display: none !important;
+          }
+        }
+
         /* ── Green home button ── */
         .pdf-home-btn:hover {
           transform: scale(1.12);

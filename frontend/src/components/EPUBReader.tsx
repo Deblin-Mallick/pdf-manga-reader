@@ -680,14 +680,16 @@ export default function EPUBReader({
       style={{ 
         display: 'flex', 
         flex: 1, 
-        height: 'calc(100vh - 120px)', 
-        position: 'relative', 
+        height: '100vh', 
+        position: 'fixed', 
+        top: 0,
+        left: 0,
+        width: '100vw',
+        zIndex: 999,
         backgroundColor: activeTheme.bg,
         color: activeTheme.text,
         transition: 'all 0.3s ease',
-        borderRadius: '16px',
-        overflow: 'hidden',
-        border: `1px solid ${activeTheme.border}`
+        overflow: 'hidden'
       }}
     >
       {/* 1. COLLAPSIBLE SIDEBAR */}
@@ -1125,7 +1127,7 @@ export default function EPUBReader({
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            padding: '24px',
+            padding: '12px 24px',
             transition: 'background 0.3s'
           }}
         >
@@ -1138,7 +1140,7 @@ export default function EPUBReader({
             <div 
               style={{
                 width: '100%',
-                maxWidth: '90%',
+                maxWidth: '96%',
                 height: '100%',
                 borderRadius: '12px',
                 boxShadow: settings.theme === 'dark' ? '0 10px 40px rgba(0,0,0,0.5)' : '0 10px 40px rgba(0,0,0,0.08)',

@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import time
 from contextlib import contextmanager
 
 # Read database URL (default fallback to SQLite)
@@ -99,42 +100,55 @@ def get_db():
             conn.close()
 
 def init_db():
-    with get_db() as conn:
-        # Create users table
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id TEXT PRIMARY KEY,
-                email TEXT,
-                name TEXT,
-                picture TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
-        
-        # Create books table
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS books (
-                id TEXT PRIMARY KEY,
-                user_id TEXT,
-                title TEXT NOT NULL,
-                type TEXT NOT NULL,
-                file_path TEXT NOT NULL,
-                cover_path TEXT,
-                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                current_page INTEGER DEFAULT 1,
-                total_pages INTEGER DEFAULT 1,
-                zoom REAL DEFAULT 1.0,
-                view_mode TEXT DEFAULT 'fit-width',
-                scroll_position INTEGER DEFAULT 0,
-                reading_direction TEXT DEFAULT 'ltr',
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-            );
-        """)
-        
-        # Ensure a default 'guest' user exists in case login is bypassed
-        conn.execute("""
-            INSERT INTO users (id, email, name, picture)
-            VALUES ('guest', 'guest@local.dev', 'Guest Reader', '')
-            ON CONFLICT(id) DO NOTHING;
-        """)
+    retries = 5
+    delay = 2
+    for i in range(retries):
+        try:
+            with get_db() as conn:
+                # Create users table
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS users (
+                        id TEXT PRIMARY KEY,
+                        email TEXT,
+                        name TEXT,
+                        picture TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+                """)
+                
+                # Create books table
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS books (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT,
+                        title TEXT NOT NULL,
+                        type TEXT NOT NULL,
+                        file_path TEXT NOT NULL,
+                        cover_path TEXT,
+                        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        last_read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        current_page INTEGER DEFAULT 1,
+                        total_pages INTEGER DEFAULT 1,
+                        zoom REAL DEFAULT 1.0,
+                        view_mode TEXT DEFAULT 'fit-width',
+                        scroll_position INTEGER DEFAULT 0,
+                        reading_direction TEXT DEFAULT 'ltr',
+                        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                    );
+                """)
+                
+                # Ensure a default 'guest' user exists in case login is bypassed
+                conn.execute("""
+                    INSERT INTO users (id, email, name, picture)
+                    VALUES ('guest', 'guest@local.dev', 'Guest Reader', '')
+                    ON CONFLICT(id) DO NOTHING;
+                """)
+            print("Database initialized successfully.")
+            break
+        except Exception as e:
+            if i == retries - 1:
+                print(f"Database initialization failed after {retries} retries.")
+                raise e
+            print(f"Database connection not ready yet: {e}. Retrying in {delay} seconds...")
+            time.sleep(delay)
+            delay *= 2

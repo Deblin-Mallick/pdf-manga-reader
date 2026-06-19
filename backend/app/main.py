@@ -32,11 +32,24 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Configure CORS for local development and containerization
+# Configure CORS with environment-based allowed origins (wildcard is not permitted with allow_credentials)
+origins = []
+allowed_origins_env = os.environ.get("ALLOWED_ORIGINS", "")
+if allowed_origins_env:
+    origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
+else:
+    # Default to local development origins
+    origins = [
+        "http://localhost:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:8000",
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allowed since Vite will proxy requests or run on local hosts
-    allow_credentials=True,
+    allow_origins=origins,
+    allow_credentials=True if "*" not in origins else False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

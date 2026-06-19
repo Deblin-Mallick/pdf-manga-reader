@@ -36,7 +36,17 @@ def load_env_file():
 load_env_file()
 
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
-JWT_SECRET = os.environ.get("JWT_SECRET", "super-secret-manga-reader-token-key-2026")
+ENVIRONMENT = os.environ.get("ENVIRONMENT", "development")
+
+JWT_SECRET = os.environ.get("JWT_SECRET", "")
+if not JWT_SECRET:
+    if ENVIRONMENT == "production":
+        raise ValueError(
+            "CRITICAL SECURITY ERROR: JWT_SECRET environment variable must be set in production! "
+            "Please generate a secure random string and assign it to JWT_SECRET."
+        )
+    JWT_SECRET = "super-secret-manga-reader-token-key-2026"
+
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_SECONDS = 30 * 24 * 60 * 60  # 30 days session expiry
 

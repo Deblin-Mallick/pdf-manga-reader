@@ -228,12 +228,6 @@ export default function App() {
     setCurrentBook(null);
   };
 
-  const handleSaveClientId = (clientId: string) => {
-    localStorage.setItem('google_client_id', clientId);
-    setGoogleClientId(clientId);
-    window.location.reload();
-  };
-
   const handleBookUploadSuccess = (newBook: Book) => {
     setBooks((prev) => [newBook, ...prev]);
   };
@@ -325,7 +319,6 @@ export default function App() {
             localStorage.setItem('reader_guest_mode', 'true');
             fetchUserData();
           }}
-          onSaveClientId={handleSaveClientId}
         />
       </div>
     );

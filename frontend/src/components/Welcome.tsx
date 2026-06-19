@@ -1,22 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { BookOpen, Cloud, FileText, Settings, AlertCircle, ArrowRight, Lock, Key } from 'lucide-react';
+import { useEffect } from 'react';
+import { BookOpen, Cloud, FileText, AlertCircle, ArrowRight, Lock } from 'lucide-react';
 
 interface WelcomeProps {
   googleClientId: string;
   onInitGoogleAuth: () => void;
   onContinueAsGuest: () => void;
-  onSaveClientId: (clientId: string) => void;
 }
 
 export default function Welcome({
   googleClientId,
   onInitGoogleAuth,
   onContinueAsGuest,
-  onSaveClientId,
 }: WelcomeProps) {
-  const [showConfig, setShowConfig] = useState(false);
-  const [clientIdInput, setClientIdInput] = useState(googleClientId);
-
   // Initialize the Google button if Client ID exists
   useEffect(() => {
     if (googleClientId) {
@@ -27,13 +22,6 @@ export default function Welcome({
       return () => clearTimeout(timer);
     }
   }, [googleClientId, onInitGoogleAuth]);
-
-  const handleConfigSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (clientIdInput.trim()) {
-      onSaveClientId(clientIdInput.trim());
-    }
-  };
 
   return (
     <div className="welcome-wrapper fade-in">
@@ -113,49 +101,8 @@ export default function Welcome({
               <span>Continue as Guest</span>
               <ArrowRight size={16} />
             </button>
-
-            <button 
-              onClick={() => setShowConfig(!showConfig)} 
-              className={`btn-secondary config-toggle-btn ${showConfig ? 'active' : ''}`}
-              title="Configure Client ID"
-            >
-              <Settings size={18} />
-              <span>{googleClientId ? 'Change Client ID' : 'Setup Client ID'}</span>
-            </button>
           </div>
         </div>
-
-        {/* Inline Client ID Configuration */}
-        {showConfig && (
-          <div className="inline-config-panel fade-in">
-            <div className="config-header">
-              <Key size={16} style={{ color: 'var(--accent-primary)' }} />
-              <h4>Google Client ID Configuration</h4>
-            </div>
-            <p className="config-help">
-              To enable secure cloud library sync, paste your Google OAuth Client ID below. 
-              You can obtain this from the Google Cloud Console.
-            </p>
-            <form onSubmit={handleConfigSubmit} className="config-form">
-              <input 
-                type="text" 
-                value={clientIdInput}
-                onChange={(e) => setClientIdInput(e.target.value)}
-                placeholder="Paste xxxx-xxxx.apps.googleusercontent.com here" 
-                className="config-input"
-                required
-              />
-              <div className="config-buttons">
-                <button type="button" onClick={() => setShowConfig(false)} className="btn-secondary btn-sm">
-                  Cancel
-                </button>
-                <button type="submit" className="btn-primary btn-sm">
-                  Save & Reload
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
       </div>
 
       <style>{`

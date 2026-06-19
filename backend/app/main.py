@@ -90,6 +90,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    
+    # 1. Content-Security-Policy (CSP)
+    csp_directives = [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://apis.google.com https://cdnjs.cloudflare.com",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com",
+        "img-src 'self' data: blob: https://lh3.googleusercontent.com https://ssl.gstatic.com",
+        "font-src 'self' data: https://fonts.gstatic.com",
+        "frame-src 'self' https://accounts.google.com",
+        "connect-src 'self' https://accounts.google.com",
+        "worker-src 'self' blob: https://cdnjs.cloudflare.com"
+    ]
+    response.headers["Content-Security-Policy"] = "; ".join(csp_directives)
+    
+    # 2. Referrer-Policy
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    
+    # 3. Strict-Transport-Security (HSTS)
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+    
+    # 4. X-Content-Type-Options
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    
+    # 5. X-Frame-Options (Clickjacking defense)
+    response.headers["X-Frame-Options"] = "DENY"
+    
+    return response
+
 # Mount covers folder to serve cover images statically
 app.mount("/covers", StaticFiles(directory=COVERS_DIR), name="covers")
 

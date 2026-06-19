@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Settings, LogOut, BookOpen, AlertCircle } from 'lucide-react';
+import { LogOut, BookOpen } from 'lucide-react';
 import Dashboard from './components/Dashboard';
+import Welcome from './components/Welcome';
 import PDFReader from './components/PDFReader';
 import MangaReader from './components/MangaReader';
 import EPUBReader from './components/EPUBReader';
@@ -41,7 +42,6 @@ export default function App() {
   const [books, setBooks] = useState<Book[]>([]);
   const [currentBook, setCurrentBook] = useState<Book | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   // ID of the last-opened book — ref so it never triggers re-renders
   const pendingBookIdRef = useRef<string | null>(
     sessionStorage.getItem('reader_open_book_id')
@@ -51,6 +51,19 @@ export default function App() {
   const [googleClientId, setGoogleClientId] = useState<string>(
     localStorage.getItem('google_client_id') || ''
   );
+
+  // Fetch Google Client ID config from backend on mount
+  useEffect(() => {
+    fetch('/api/auth/config')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.google_client_id) {
+          setGoogleClientId(data.google_client_id);
+          localStorage.setItem('google_client_id', data.google_client_id);
+        }
+      })
+      .catch((err) => console.error('Failed to load backend config:', err));
+  }, []);
 
   // Helper to make authenticated API requests
   const apiFetch = useCallback(async (url: string, options: RequestInit = {}) => {
@@ -71,6 +84,12 @@ export default function App() {
   // Fetch current profile and books
   const fetchUserData = useCallback(async () => {
     if (!token) {
+      const isGuest = localStorage.getItem('reader_guest_mode') === 'true';
+      if (!isGuest) {
+        setUser(null);
+        return;
+      }
+      
       // In guest mode
       setUser({
         id: 'guest',
@@ -143,6 +162,7 @@ export default function App() {
 
       const data = await res.json();
       localStorage.setItem('reader_jwt', data.token);
+      localStorage.removeItem('reader_guest_mode');
       setToken(data.token);
       setUser(data.user);
       
@@ -189,22 +209,28 @@ export default function App() {
     initGoogleLogin();
   }, [googleClientId, initGoogleLogin]);
 
+  // Re-initialize Google Login button in the header if Guest mode is active
+  useEffect(() => {
+    if (user?.id === 'guest' && googleClientId) {
+      const timer = setTimeout(() => {
+        initGoogleLogin();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [user, googleClientId, initGoogleLogin]);
+
   const handleSignOut = () => {
     localStorage.removeItem('reader_jwt');
+    localStorage.removeItem('reader_guest_mode');
     setToken(null);
     setUser(null);
     setBooks([]);
     setCurrentBook(null);
   };
 
-  const handleSaveSettings = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const data = new FormData(e.currentTarget);
-    const clientId = data.get('clientId') as string;
+  const handleSaveClientId = (clientId: string) => {
     localStorage.setItem('google_client_id', clientId);
     setGoogleClientId(clientId);
-    setShowSettings(false);
-    // Reload page to re-initialize Google libraries
     window.location.reload();
   };
 
@@ -289,6 +315,22 @@ export default function App() {
     }
   }, [currentBook]);
 
+  if (!user && !isLoading) {
+    return (
+      <div className="app-container">
+        <Welcome 
+          googleClientId={googleClientId}
+          onInitGoogleAuth={initGoogleLogin}
+          onContinueAsGuest={() => {
+            localStorage.setItem('reader_guest_mode', 'true');
+            fetchUserData();
+          }}
+          onSaveClientId={handleSaveClientId}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="app-container">
       {/* Header Panel */}
@@ -314,18 +356,18 @@ export default function App() {
               <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 500 }} className="desktop-only">
                 {user.name}
               </span>
-              {user.id !== 'guest' && (
+              {user.id !== 'guest' ? (
                 <button onClick={handleSignOut} className="btn-secondary" style={{ padding: '8px 12px' }} title="Log Out">
                   <LogOut size={16} />
                 </button>
+              ) : (
+                /* Google login button in header for Guest users */
+                googleClientId && (
+                  <div id="google-signin-btn" style={{ display: 'inline-block' }}></div>
+                )
               )}
             </div>
           )}
-
-          {/* Settings Trigger */}
-          <button onClick={() => setShowSettings(true)} className="btn-secondary" style={{ padding: '8px 12px' }} title="Configure Settings">
-            <Settings size={18} />
-          </button>
         </div>
       </header>
 
@@ -375,43 +417,7 @@ export default function App() {
         )}
       </main>
 
-      {/* Settings Modal */}
-      {showSettings && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(8px)' }}>
-          <div className="glass-panel" style={{ width: '100%', maxWidth: '480px', padding: '32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Settings size={22} style={{ color: 'var(--accent-primary)' }} />
-              <h2>Reader Settings</h2>
-            </div>
-            
-            <form onSubmit={handleSaveSettings} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Google OAuth Client ID</label>
-                <input 
-                  type="text" 
-                  name="clientId" 
-                  defaultValue={googleClientId}
-                  placeholder="Paste client ID here..." 
-                  style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-glass)', backgroundColor: 'rgba(255,255,255,0.03)', color: '#fff', fontSize: '0.9rem', outline: 'none' }}
-                />
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <AlertCircle size={12} />
-                  Paste Client ID to enable secure cloud library login.
-                </span>
-              </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
-                <button type="button" onClick={() => setShowSettings(false)} className="btn-secondary">
-                  Cancel
-                </button>
-                <button type="submit" className="btn-primary">
-                  Save & Reload
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Add spin animation locally for loader */}
       <style>{`

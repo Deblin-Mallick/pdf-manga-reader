@@ -5,6 +5,36 @@ import jwt
 from fastapi import Header, HTTPException, status, Depends
 from typing import Optional
 
+def load_env_file():
+    # Try to find .env file in parent directories
+    # auth.py is in backend/app/auth.py
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    backend_dir = os.path.dirname(app_dir)
+    root_dir = os.path.dirname(backend_dir)
+    
+    env_paths = [
+        os.path.join(root_dir, ".env"),
+        os.path.join(backend_dir, ".env"),
+        os.path.join(app_dir, ".env"),
+    ]
+    for path in env_paths:
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            key, val = line.split("=", 1)
+                            key = key.strip()
+                            val = val.strip().strip("'\"")
+                            if key not in os.environ:
+                                os.environ[key] = val
+                break
+            except Exception as e:
+                print(f"Error loading env from {path}: {e}")
+
+load_env_file()
+
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 JWT_SECRET = os.environ.get("JWT_SECRET", "super-secret-manga-reader-token-key-2026")
 JWT_ALGORITHM = "HS256"

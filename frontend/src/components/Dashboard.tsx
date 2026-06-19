@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Trash2, Book, FileText, Search, Play, Plus, BookOpen, LogIn, RefreshCw } from 'lucide-react';
+import { Upload, Trash2, Book, FileText, Search, Play, Plus, BookOpen, RefreshCw } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import JSZip from 'jszip';
 import { Book as BookType, User } from '../App';
@@ -333,33 +333,6 @@ export default function Dashboard({
         )}
       </section>
 
-      {/* Cloud Login CTA (for guest users) */}
-      {user?.id === 'guest' && (
-        <section className="glass-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '24px', flexWrap: 'wrap', gap: '16px', background: 'radial-gradient(ellipse at bottom right, rgba(6, 182, 212, 0.08), transparent)' }}>
-          <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-            <div style={{ padding: '12px', borderRadius: '12px', backgroundColor: 'rgba(6, 182, 212, 0.08)', color: 'var(--accent-secondary)' }}>
-              <LogIn size={24} />
-            </div>
-            <div>
-              <h3 style={{ fontSize: '1.1rem', marginBottom: '4px' }}>Want to sync library across devices?</h3>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                {googleClientId 
-                  ? 'Sign in using your Google account to associate your files and reading progress.'
-                  : 'Configure a Google Client ID in the top right Settings to enable secure Sign-In.'
-                }
-              </p>
-            </div>
-          </div>
-          
-          {googleClientId ? (
-            <div id="google-signin-btn"></div>
-          ) : (
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '8px 12px', backgroundColor: 'rgba(255,255,255,0.01)' }}>
-              Awaiting OAuth configuration
-            </div>
-          )}
-        </section>
-      )}
 
       {/* Catalog Filters and Search */}
       <section style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>

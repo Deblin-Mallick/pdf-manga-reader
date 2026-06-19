@@ -91,6 +91,17 @@ async def google_auth(req: GoogleLoginRequest):
             raise e
         raise HTTPException(status_code=400, detail=f"Authentication failed: {str(e)}")
 
+@app.get("/api/auth/config")
+async def get_config():
+    """
+    Returns public config info, specifically Google Client ID if set.
+    """
+    from app.auth import GOOGLE_CLIENT_ID
+    client_id = GOOGLE_CLIENT_ID
+    if not client_id or "your-google-client-id-here" in client_id:
+        client_id = ""
+    return {"google_client_id": client_id}
+
 @app.get("/api/auth/me")
 async def get_me(user_id: str = Depends(get_current_user_id)):
     """

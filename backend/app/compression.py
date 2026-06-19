@@ -24,3 +24,17 @@ def decompress_and_stream(source_path: str, chunk_size: int = 1024 * 64):
             if not chunk:
                 break
             yield chunk
+
+def is_gzip_file(filepath: str) -> bool:
+    """
+    Checks if a file is gzip compressed by reading its first 2 bytes signature (\x1f\x8b).
+    """
+    if not os.path.exists(filepath):
+        return False
+    try:
+        with open(filepath, "rb") as f:
+            signature = f.read(2)
+            return signature == b"\x1f\x8b"
+    except Exception:
+        return False
+

@@ -10,7 +10,13 @@ from contextlib import asynccontextmanager
 
 from app.db import init_db, get_db
 from app.auth import verify_google_token, create_session_token, get_current_user_id
-from app.compression import compress_and_save, decompress_and_stream
+from app.compression import compress_and_save, decompress_and_stream, is_gzip_file
+import re
+import json
+import zipfile
+import gzip
+
+
 
 # Setup directories relative to the backend root
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -19,6 +25,28 @@ COVERS_DIR = os.path.join(BASE_DIR, "covers")
 
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 os.makedirs(COVERS_DIR, exist_ok=True)
+
+def natural_sort_key(s):
+    return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
+
+def get_manga_pages_from_zip(file_path_or_bytes) -> list:
+    pages = []
+    try:
+        with zipfile.ZipFile(file_path_or_bytes) as z:
+            for info in z.infolist():
+                if info.is_dir():
+                    continue
+                filename = info.filename
+                basename = os.path.basename(filename)
+                if basename.startswith('.') or basename.startswith('__MACOSX') or basename.lower() == 'thumbs.db':
+                    continue
+                ext = os.path.splitext(filename)[1].lower()
+                if ext in ['.png', '.jpg', '.jpeg', '.webp', '.gif']:
+                    pages.append(filename)
+        pages.sort(key=natural_sort_key)
+    except Exception as e:
+        print(f"Error reading zip: {e}")
+    return pages
 
 import datetime
 
@@ -257,12 +285,12 @@ async def upload_book(
     user_id: str = Depends(get_current_user_id)
 ):
     """
-    Uploads a new book/manga. Files are compressed to .gz on disk.
+    Uploads a new book/manga. Files are stored in native raw format on disk.
     Covers are saved in covers/ directory.
     """
     book_id = str(uuid.uuid4())
     
-    # 1. Compress and save file data to uploads/
+    # 1. Read file bytes
     file_bytes = await file.read()
     
     final_type = type
@@ -277,9 +305,30 @@ async def upload_book(
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"PDF to EPUB conversion failed: {str(e)}")
 
-    file_name = f"{book_id}.gz"
+    # Get extension from filename
+    ext = os.path.splitext(file.filename)[1].lower() if file.filename else ""
+    if not ext:
+        if final_type == "pdf":
+            ext = ".pdf"
+        elif final_type == "epub":
+            ext = ".epub"
+        else:
+            ext = ".zip"
+            
+    file_name = f"{book_id}{ext}"
     file_path = os.path.join(UPLOADS_DIR, file_name)
-    compress_and_save(final_file_bytes, file_path)
+    
+    # Save raw file bytes
+    with open(file_path, "wb") as f:
+        f.write(final_file_bytes)
+        
+    # Generate page manifest for manga (ZIP/CBZ) files
+    page_manifest_json = None
+    if final_type == "manga":
+        import io
+        pages = get_manga_pages_from_zip(io.BytesIO(final_file_bytes))
+        final_total_pages = len(pages)
+        page_manifest_json = json.dumps(pages)
     
     # 2. Save cover image to covers/ if provided
     cover_url_path = ""
@@ -294,9 +343,9 @@ async def upload_book(
     # 3. Save to database
     with get_db() as conn:
         conn.execute("""
-            INSERT INTO books (id, user_id, title, type, file_path, cover_path, total_pages)
-            VALUES (?, ?, ?, ?, ?, ?, ?);
-        """, (book_id, user_id, title, final_type, file_name, cover_url_path, final_total_pages))
+            INSERT INTO books (id, user_id, title, type, file_path, cover_path, total_pages, page_manifest)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+        """, (book_id, user_id, title, final_type, file_name, cover_url_path, final_total_pages, page_manifest_json))
         
         new_book = conn.execute("SELECT * FROM books WHERE id = ?;", (book_id,)).fetchone()
         
@@ -305,7 +354,7 @@ async def upload_book(
 @app.get("/api/books/{book_id}/file")
 async def get_book_file(book_id: str, user_id: str = Depends(get_current_user_id)):
     """
-    Streams the decompressed book file directly to the client.
+    Streams the book file directly to the client.
     """
     with get_db() as conn:
         book = conn.execute(
@@ -329,11 +378,19 @@ async def get_book_file(book_id: str, user_id: str = Depends(get_current_user_id
     else:
         media_type = "application/zip"
     
-    return StreamingResponse(
-        decompress_and_stream(file_path),
-        media_type=media_type,
-        headers={"Content-Disposition": f"inline; filename={book['title']}.{book['type']}"}
-    )
+    if is_gzip_file(file_path):
+        return StreamingResponse(
+            decompress_and_stream(file_path),
+            media_type=media_type,
+            headers={"Content-Disposition": f"inline; filename={book['title']}.{book['type']}"}
+        )
+    else:
+        from fastapi.responses import FileResponse
+        return FileResponse(
+            file_path,
+            media_type=media_type,
+            filename=f"{book['title']}.{book['type']}"
+        )
 
 @app.put("/api/books/{book_id}/progress")
 async def update_progress(
@@ -430,15 +487,23 @@ async def convert_existing_book(book_id: str, user_id: str = Depends(get_current
         raise HTTPException(status_code=404, detail="Original PDF file is missing on the server")
         
     try:
-        # Read and decompress gzipped PDF
-        pdf_bytes = b"".join(decompress_and_stream(file_path))
-        
-        # Convert PDF to EPUB
-        from app.epub_converter import convert_pdf_to_epub
-        epub_bytes = convert_pdf_to_epub(pdf_bytes, book["title"])
-        
-        # Overwrite the file on disk with the compressed EPUB bytes
-        compress_and_save(epub_bytes, file_path)
+        # Read PDF bytes, decompressing if gzipped
+        if is_gzip_file(file_path):
+            pdf_bytes = b"".join(decompress_and_stream(file_path))
+            # Convert PDF to EPUB
+            from app.epub_converter import convert_pdf_to_epub
+            epub_bytes = convert_pdf_to_epub(pdf_bytes, book["title"])
+            # Overwrite legacy file with compressed EPUB
+            compress_and_save(epub_bytes, file_path)
+        else:
+            with open(file_path, "rb") as f:
+                pdf_bytes = f.read()
+            # Convert PDF to EPUB
+            from app.epub_converter import convert_pdf_to_epub
+            epub_bytes = convert_pdf_to_epub(pdf_bytes, book["title"])
+            # Save raw EPUB
+            with open(file_path, "wb") as f:
+                f.write(epub_bytes)
         
         # Update type to 'epub' in DB
         with get_db() as conn:
@@ -454,6 +519,202 @@ async def convert_existing_book(book_id: str, user_id: str = Depends(get_current
         return updated_book
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Conversion failed: {str(e)}")
+
+class MediaTokenResponse(BaseModel):
+    token: str
+
+@app.post("/api/books/{book_id}/media-token", response_model=MediaTokenResponse)
+async def get_book_media_token(book_id: str, user_id: str = Depends(get_current_user_id)):
+    """
+    Generates a short-lived signed media token for accessing images/pages of the book.
+    """
+    with get_db() as conn:
+        book = conn.execute(
+            "SELECT * FROM books WHERE id = ? AND user_id = ?;",
+            (book_id, user_id)
+        ).fetchone()
+        
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found or access denied")
+        
+    # Generate media token
+    from app.auth import create_media_token
+    token = create_media_token(user_id, book_id)
+    return {"token": token}
+
+@app.get("/api/books/{book_id}/manga/pages")
+async def get_manga_pages(book_id: str, user_id: str = Depends(get_current_user_id)):
+    """
+    Returns the list of manga pages (cached manifest) for a ZIP/CBZ archive.
+    Generates it lazily if missing.
+    """
+    with get_db() as conn:
+        book = conn.execute(
+            "SELECT * FROM books WHERE id = ? AND user_id = ?;",
+            (book_id, user_id)
+        ).fetchone()
+        
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found or access denied")
+        
+    if book["type"] != "manga":
+        raise HTTPException(status_code=400, detail="Only manga books have page manifests")
+        
+    # Check if page manifest is already cached in DB
+    if book["page_manifest"]:
+        try:
+            pages = json.loads(book["page_manifest"])
+            return {"pages": pages}
+        except Exception:
+            pass
+            
+    # Lazy generation
+    file_path = os.path.join(UPLOADS_DIR, book["file_path"])
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Book file missing on server")
+        
+    pages = []
+    if is_gzip_file(file_path):
+        try:
+            with gzip.open(file_path, "rb") as gf:
+                zip_data = gf.read()
+            import io
+            pages = get_manga_pages_from_zip(io.BytesIO(zip_data))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to read legacy archive: {str(e)}")
+    else:
+        pages = get_manga_pages_from_zip(file_path)
+        
+    # Persist the generated page manifest to DB
+    page_count = len(pages)
+    page_manifest_json = json.dumps(pages)
+    
+    with get_db() as conn:
+        conn.execute("""
+            UPDATE books
+            SET page_manifest = ?,
+                total_pages = ?
+            WHERE id = ?;
+        """, (page_manifest_json, page_count, book_id))
+        
+    return {"pages": pages}
+
+@app.get("/api/books/{book_id}/manga/pages/{page_index}/image")
+async def get_manga_page_image(
+    book_id: str,
+    page_index: int,
+    token: str,
+):
+    """
+    Streams a single page image directly from the archive.
+    Validates the short-lived media token and book permissions.
+    """
+    # 1. Validate the short-lived media token
+    from app.auth import verify_media_token
+    user_id = verify_media_token(token, book_id)
+    
+    # 2. Verify book permissions (make sure user owns/has access to the book)
+    with get_db() as conn:
+        book = conn.execute(
+            "SELECT * FROM books WHERE id = ? AND user_id = ?;",
+            (book_id, user_id)
+        ).fetchone()
+        
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found or access denied")
+        
+    if book["type"] != "manga":
+        raise HTTPException(status_code=400, detail="Only manga books have image pages")
+        
+    # 3. Retrieve or lazily load the page manifest to find the filename at page_index
+    pages = []
+    if book["page_manifest"]:
+        try:
+            pages = json.loads(book["page_manifest"])
+        except Exception:
+            pass
+            
+    if not pages:
+        file_path = os.path.join(UPLOADS_DIR, book["file_path"])
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="Book file missing")
+            
+        if is_gzip_file(file_path):
+            try:
+                with gzip.open(file_path, "rb") as gf:
+                    zip_data = gf.read()
+                import io
+                pages = get_manga_pages_from_zip(io.BytesIO(zip_data))
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to read legacy archive: {str(e)}")
+        else:
+            pages = get_manga_pages_from_zip(file_path)
+            
+        page_manifest_json = json.dumps(pages)
+        with get_db() as conn:
+            conn.execute("""
+                UPDATE books
+                SET page_manifest = ?,
+                    total_pages = ?
+                WHERE id = ?;
+            """, (page_manifest_json, len(pages), book_id))
+            
+    if page_index < 0 or page_index >= len(pages):
+        raise HTTPException(status_code=404, detail="Page index out of bounds")
+        
+    target_filename = pages[page_index]
+    
+    # 4. Stream directly from ZIP archive without extracting to disk
+    file_path = os.path.join(UPLOADS_DIR, book["file_path"])
+    
+    # Determine content-type
+    ext = os.path.splitext(target_filename)[1].lower()
+    if ext == ".png":
+        media_type = "image/png"
+    elif ext in [".jpg", ".jpeg"]:
+        media_type = "image/jpeg"
+    elif ext == ".webp":
+        media_type = "image/webp"
+    elif ext == ".gif":
+        media_type = "image/gif"
+    else:
+        media_type = "application/octet-stream"
+        
+    if is_gzip_file(file_path):
+        try:
+            with gzip.open(file_path, "rb") as gf:
+                zip_data = gf.read()
+            import io
+            z = zipfile.ZipFile(io.BytesIO(zip_data))
+            def stream_bytes():
+                try:
+                    with z.open(target_filename) as img_file:
+                        while True:
+                            chunk = img_file.read(1024 * 64)
+                            if not chunk:
+                                break
+                            yield chunk
+                finally:
+                    z.close()
+            return StreamingResponse(stream_bytes(), media_type=media_type)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to read legacy archive: {str(e)}")
+    else:
+        try:
+            z = zipfile.ZipFile(file_path)
+            def stream_bytes():
+                try:
+                    with z.open(target_filename) as img_file:
+                        while True:
+                            chunk = img_file.read(1024 * 64)
+                            if not chunk:
+                                break
+                            yield chunk
+                finally:
+                    z.close()
+            return StreamingResponse(stream_bytes(), media_type=media_type)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to read archive: {str(e)}")
 
 # Mount frontend compiled static files (if they exist)
 STATIC_DIR = os.path.join(BASE_DIR, "static")

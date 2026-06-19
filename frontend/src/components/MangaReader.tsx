@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, ChevronLeft, ChevronRight, Layout, AlignJustify, Eye, Sun, Undo } from 'lucide-react';
-import JSZip from 'jszip';
 import { Book } from '../App';
 
 interface MangaReaderProps {
@@ -25,9 +24,8 @@ export default function MangaReader({
   onBack,
   onUpdateProgress,
 }: MangaReaderProps) {
-  const [zip, setZip] = useState<JSZip | null>(null);
-  const [imageKeys, setImageKeys] = useState<string[]>([]);
-  const [cachedUrls, setCachedUrls] = useState<{ [index: number]: string }>({});
+  const [pages, setPages] = useState<string[]>([]);
+  const [mediaToken, setMediaToken] = useState<string | null>(null);
   
   const [currentPage, setCurrentPage] = useState(book.current_page || 1);
   const [viewMode, setViewMode] = useState<string>(book.view_mode || 'single-page'); // single-page, double-page, webtoon
@@ -36,101 +34,87 @@ export default function MangaReader({
   const [contrast, setContrast] = useState<number>(100);
   
   const [loading, setLoading] = useState(true);
-  const [loadingText, setLoadingText] = useState('Downloading manga...');
+  const [loadingText, setLoadingText] = useState('Initializing reader...');
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Load zip and find files
+  // Fetch short-lived media token
+  const fetchMediaToken = useCallback(async () => {
+    try {
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const res = await fetch(`/api/books/${book.id}/media-token`, {
+        method: 'POST',
+        headers,
+      });
+      if (!res.ok) throw new Error('Failed to fetch media token');
+      const data = await res.json();
+      setMediaToken(data.token);
+      return data.token;
+    } catch (err) {
+      console.error('Error fetching media token:', err);
+      return null;
+    }
+  }, [book.id, token]);
+
+  // Load manga manifest and media token on mount
   useEffect(() => {
     let isMounted = true;
-    const loadZipFile = async () => {
+    
+    const loadMangaData = async () => {
       try {
         const headers: HeadersInit = {};
         if (token) {
           headers['Authorization'] = `Bearer ${token}`;
         }
         
-        const response = await fetch(`/api/books/${book.id}/file`, { headers });
-        if (!response.ok) {
-          throw new Error('Failed to load manga file');
+        // 1. Fetch media token first (needed to render pages)
+        setLoadingText('Requesting media access...');
+        const mToken = await fetchMediaToken();
+        if (!mToken) {
+          throw new Error('Could not obtain media access token');
         }
         
-        setLoadingText('Parsing CBZ/ZIP archive...');
-        const buffer = await response.arrayBuffer();
-        
-        const loadedZip = await JSZip.loadAsync(buffer);
-        const fileNames = Object.keys(loadedZip.files);
-        
-        // Find and sort all image entries
-        const imageExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'];
-        const sortedKeys = fileNames
-          .filter((name) => imageExtensions.some((ext) => name.toLowerCase().endsWith(ext)) && !loadedZip.files[name].dir)
-          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
-
-        if (sortedKeys.length === 0) {
-          throw new Error('No images found in CBZ/ZIP file.');
+        // 2. Fetch page manifest
+        setLoadingText('Fetching page entries...');
+        const res = await fetch(`/api/books/${book.id}/manga/pages`, { headers });
+        if (!res.ok) {
+          throw new Error('Failed to fetch page manifest');
         }
-
+        const data = await res.json();
+        
         if (isMounted) {
-          setZip(loadedZip);
-          setImageKeys(sortedKeys);
+          setPages(data.pages || []);
           setLoading(false);
         }
       } catch (err) {
-        console.error('Error reading manga:', err);
-        alert(err instanceof Error ? err.message : 'Failed to load manga archive.');
+        console.error('Error initializing manga reader:', err);
+        alert(err instanceof Error ? err.message : 'Failed to initialize manga reader.');
         onBack();
       }
     };
-
-    loadZipFile();
-
+    
+    loadMangaData();
+    
+    // Refresh token every 4 minutes (240000ms)
+    const interval = setInterval(async () => {
+      if (isMounted) {
+        await fetchMediaToken();
+      }
+    }, 240000);
+    
     return () => {
       isMounted = false;
-      // Clean up object URLs to avoid memory leaks
-      setCachedUrls((prev) => {
-        Object.values(prev).forEach((url) => URL.revokeObjectURL(url));
-        return {};
-      });
+      clearInterval(interval);
     };
-  }, [book.id, token, onBack]);
+  }, [book.id, token, fetchMediaToken, onBack]);
 
-  // Extract page image on-demand
-  const getPageUrl = useCallback(async (index: number): Promise<string> => {
-    if (index < 0 || index >= imageKeys.length || !zip) return '';
-    if (cachedUrls[index]) return cachedUrls[index];
-
-    try {
-      const file = zip.files[imageKeys[index]];
-      const blob = await file.async('blob');
-      const url = URL.createObjectURL(blob);
-      setCachedUrls((prev) => ({ ...prev, [index]: url }));
-      return url;
-    } catch (err) {
-      console.error(`Error loading page ${index}:`, err);
-      return '';
-    }
-  }, [zip, imageKeys, cachedUrls]);
-
-  // Pre-load sliding window of next 2 pages in background
-  useEffect(() => {
-    if (!zip || imageKeys.length === 0) return;
-
-    const preload = async () => {
-      // Preload current page, next page, and following
-      const indicesToPreload = [currentPage - 1, currentPage, currentPage + 1];
-      if (viewMode === 'double-page') {
-        indicesToPreload.push(currentPage + 2);
-      }
-      
-      for (const idx of indicesToPreload) {
-        if (idx >= 0 && idx < imageKeys.length && !cachedUrls[idx]) {
-          await getPageUrl(idx);
-        }
-      }
-    };
-
-    preload();
-  }, [currentPage, zip, imageKeys, viewMode, cachedUrls, getPageUrl]);
+  // Get Page URL pointing to streaming media endpoint
+  const getPageUrl = useCallback((index: number): string => {
+    if (index < 0 || index >= pages.length || !mediaToken) return '';
+    return `/api/books/${book.id}/manga/pages/${index}/image?token=${encodeURIComponent(mediaToken)}`;
+  }, [book.id, pages.length, mediaToken]);
 
   // Keep ref for scroll debouncing to avoid API locking on SQLite/NFS
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -216,12 +200,12 @@ export default function MangaReader({
   // Handle page flips
   const handleNext = useCallback(() => {
     const step = viewMode === 'double-page' ? 2 : 1;
-    if (currentPage + step <= imageKeys.length) {
+    if (currentPage + step <= pages.length) {
       const nextPage = currentPage + step;
       setCurrentPage(nextPage);
       syncProgress(nextPage);
     }
-  }, [currentPage, imageKeys.length, viewMode, syncProgress]);
+  }, [currentPage, pages.length, viewMode, syncProgress]);
 
   const handlePrev = useCallback(() => {
     const step = viewMode === 'double-page' ? 2 : 1;
@@ -259,7 +243,7 @@ export default function MangaReader({
 
   // Render Page Content based on View Mode
   const renderPagesContent = () => {
-    if (loading || imageKeys.length === 0) return null;
+    if (loading || pages.length === 0) return null;
 
     const filterStyle = {
       filter: `brightness(${brightness}%) contrast(${contrast}%)`,
@@ -272,28 +256,19 @@ export default function MangaReader({
       // Continuous scroll Webtoon mode
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0px', width: '100%', maxWidth: '800px', margin: '0 auto' }}>
-          {imageKeys.map((_, index) => {
-            const url = cachedUrls[index];
+          {pages.map((_, index) => {
+            const url = getPageUrl(index);
             // Only render loaded or nearby pages to prevent lag (lazy render)
-            if (Math.abs(index - (currentPage - 1)) > 8 && !url) {
+            if (Math.abs(index - (currentPage - 1)) > 8) {
               return <div key={index} style={{ height: '500px', backgroundColor: '#09090c', borderBottom: '1px solid var(--border-glass)' }} />;
             }
             
-            // Trigger load if not loaded
-            if (!url) getPageUrl(index);
-
             return (
               <img 
                 key={index} 
-                src={url || ''} 
+                src={url} 
                 alt={`Manga Page ${index + 1}`} 
                 style={{ width: '100%', height: 'auto', display: 'block', ...filterStyle }}
-                onLoad={() => {
-                  // If page scrolls into active view, update current page
-                  if (Math.abs(index - (currentPage - 1)) <= 1) {
-                    // Update header in background
-                  }
-                }}
               />
             );
           })}
@@ -306,15 +281,11 @@ export default function MangaReader({
       const rightPageIndex = currentPage - 1;
       const leftPageIndex = currentPage;
       
-      const rightUrl = cachedUrls[rightPageIndex];
-      const leftUrl = cachedUrls[leftPageIndex];
-
-      // Request load if missing
-      if (rightPageIndex < imageKeys.length && !rightUrl) getPageUrl(rightPageIndex);
-      if (leftPageIndex < imageKeys.length && !leftUrl) getPageUrl(leftPageIndex);
+      const rightUrl = getPageUrl(rightPageIndex);
+      const leftUrl = getPageUrl(leftPageIndex);
 
       const pageA = rightUrl ? <img src={rightUrl} alt="Page A" style={filterStyle} /> : <div style={{ flex: 1 }} />;
-      const pageB = leftUrl && leftPageIndex < imageKeys.length ? <img src={leftUrl} alt="Page B" style={filterStyle} /> : <div style={{ flex: 1 }} />;
+      const pageB = leftUrl && leftPageIndex < pages.length ? <img src={leftUrl} alt="Page B" style={filterStyle} /> : <div style={{ flex: 1 }} />;
 
       return (
         <div style={{ display: 'flex', width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', gap: '16px' }}>
@@ -334,8 +305,7 @@ export default function MangaReader({
     }
 
     // Default Single Page mode
-    const activeUrl = cachedUrls[currentPage - 1];
-    if (!activeUrl) getPageUrl(currentPage - 1);
+    const activeUrl = getPageUrl(currentPage - 1);
 
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
@@ -351,6 +321,14 @@ export default function MangaReader({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: 'calc(100vh - 120px)', position: 'relative' }}>
       
+      {/* Hidden prefetch elements for next page to make single/double page turns instant */}
+      {!loading && viewMode !== 'webtoon' && currentPage < pages.length && (
+        <img src={getPageUrl(currentPage)} style={{ display: 'none' }} alt="" />
+      )}
+      {!loading && viewMode === 'double-page' && currentPage + 1 < pages.length && (
+        <img src={getPageUrl(currentPage + 1)} style={{ display: 'none' }} alt="" />
+      )}
+
       {/* Top Header Controls */}
       <div className="glass-panel" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 24px', marginBottom: '16px', borderRadius: '12px', zIndex: 5 }}>
         <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }} className="hover-white">
@@ -366,14 +344,14 @@ export default function MangaReader({
             value={currentPage}
             onChange={(e) => {
               const val = parseInt(e.target.value);
-              if (val >= 1 && val <= imageKeys.length) {
+              if (val >= 1 && val <= pages.length) {
                 setCurrentPage(val);
                 syncProgress(val);
               }
             }}
             style={{ width: '60px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-glass)', backgroundColor: 'rgba(255,255,255,0.03)', color: '#fff', textAlign: 'center' }}
           />
-          <span>of {imageKeys.length}</span>
+          <span>of {pages.length}</span>
         </div>
       </div>
 
@@ -426,7 +404,7 @@ export default function MangaReader({
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <button 
               onClick={readingDirection === 'rtl' ? handleNext : handlePrev}
-              disabled={readingDirection === 'rtl' ? currentPage >= imageKeys.length : currentPage <= 1}
+              disabled={readingDirection === 'rtl' ? currentPage >= pages.length : currentPage <= 1}
               style={{ color: '#fff', padding: '6px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.03)' }}
               title="Previous Page (Key: Left/Right Arrow)"
             >
@@ -434,7 +412,7 @@ export default function MangaReader({
             </button>
             <button 
               onClick={readingDirection === 'rtl' ? handlePrev : handleNext}
-              disabled={readingDirection === 'rtl' ? currentPage <= 1 : currentPage >= imageKeys.length}
+              disabled={readingDirection === 'rtl' ? currentPage <= 1 : currentPage >= pages.length}
               style={{ color: '#fff', padding: '6px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.03)' }}
               title="Next Page (Key: Right/Left Arrow / Space)"
             >

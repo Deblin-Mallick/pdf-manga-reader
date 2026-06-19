@@ -136,3 +136,48 @@ def get_current_user_id(authorization: Optional[str] = Header(None)) -> str:
     except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
         # We don't crash, we fall back to guest or raise an error depending on strictness.
         return "guest"
+
+MEDIA_TOKEN_EXPIRY_SECONDS = 300  # 5 minutes
+
+def create_media_token(user_id: str, book_id: str) -> str:
+    """
+    Generates a short-lived signed media token for streaming images/media of a specific book.
+    """
+    payload = {
+        "sub": user_id,
+        "book_id": book_id,
+        "type": "media",
+        "iat": int(time.time()),
+        "exp": int(time.time()) + MEDIA_TOKEN_EXPIRY_SECONDS
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+def verify_media_token(token: str, book_id: str) -> str:
+    """
+    Verifies a short-lived media token for a specific book.
+    Returns the user_id if valid, raises HTTPException otherwise.
+    """
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        if payload.get("type") != "media":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token type for media access"
+            )
+        if payload.get("book_id") != book_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token is not valid for this book"
+            )
+        return payload["sub"]
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Media token has expired"
+        )
+    except jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid media token"
+        )
+

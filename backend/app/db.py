@@ -146,6 +146,7 @@ def init_db():
                         view_mode TEXT DEFAULT 'fit-width',
                         scroll_position INTEGER DEFAULT 0,
                         reading_direction TEXT DEFAULT 'ltr',
+                        page_manifest TEXT,
                         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
                     );
                 """)
@@ -156,6 +157,23 @@ def init_db():
                     VALUES ('guest', 'guest@local.dev', 'Guest Reader', '')
                     ON CONFLICT(id) DO NOTHING;
                 """)
+
+                # Run migration to add page_manifest column to books table
+                has_page_manifest = False
+                if IS_POSTGRES:
+                    res = conn.execute("""
+                        SELECT column_name FROM information_schema.columns 
+                        WHERE table_name='books' AND column_name='page_manifest';
+                    """).fetchall()
+                    if res:
+                        has_page_manifest = True
+                else:
+                    columns = conn.execute("PRAGMA table_info(books);").fetchall()
+                    if any(col["name"] == "page_manifest" for col in columns):
+                        has_page_manifest = True
+                
+                if not has_page_manifest:
+                    conn.execute("ALTER TABLE books ADD COLUMN page_manifest TEXT;")
             print("Database initialized successfully.")
             break
         except Exception as e:

@@ -71,7 +71,7 @@ def test_book_crud_lifecycle(client):
     import app.main
     uploads_dir = app.main.UPLOADS_DIR
     covers_dir = app.main.COVERS_DIR
-    assert os.path.exists(os.path.join(uploads_dir, f"{book_id}.gz"))
+    assert os.path.exists(os.path.join(uploads_dir, book["file_path"]))
     assert os.path.exists(os.path.join(covers_dir, f"{book_id}.jpg"))
     
     # 2. Get Books
@@ -116,7 +116,7 @@ def test_book_crud_lifecycle(client):
     assert response.status_code == 200
     
     # Verify files deleted from disk
-    assert not os.path.exists(os.path.join(uploads_dir, f"{book_id}.gz"))
+    assert not os.path.exists(os.path.join(uploads_dir, book["file_path"]))
     assert not os.path.exists(os.path.join(covers_dir, f"{book_id}.jpg"))
     
     # Verify deleted from DB
@@ -138,17 +138,18 @@ def test_guest_logout_purges_data(client):
     data = {"title": "Guest Book", "type": "pdf", "total_pages": 1, "convert_to_epub": "false"}
     
     response = client.post("/api/books", headers=headers, data=data, files=files)
-    book_id = response.json()["id"]
+    book = response.json()
+    book_id = book["id"]
     
     import app.main
-    assert os.path.exists(os.path.join(app.main.UPLOADS_DIR, f"{book_id}.gz"))
+    assert os.path.exists(os.path.join(app.main.UPLOADS_DIR, book["file_path"]))
     
     # Log out
     response = client.post("/api/auth/logout", headers=headers)
     assert response.status_code == 200
     
     # Verify files and DB entries are purged
-    assert not os.path.exists(os.path.join(app.main.UPLOADS_DIR, f"{book_id}.gz"))
+    assert not os.path.exists(os.path.join(app.main.UPLOADS_DIR, book["file_path"]))
     
     from app.db import get_db
     with get_db() as conn:
@@ -156,3 +157,78 @@ def test_guest_logout_purges_data(client):
         user_rec = conn.execute("SELECT * FROM users WHERE id = ?;", (token,)).fetchone()
         assert book_rec is None
         assert user_rec is None
+
+def test_manga_endpoints(client):
+    import io
+    import zipfile
+    
+    # 1. Create a dummy ZIP manga file in-memory
+    manga_buf = io.BytesIO()
+    with zipfile.ZipFile(manga_buf, "w") as z:
+        z.writestr("page1.png", b"fake-png-1")
+        z.writestr("sub/page3.png", b"fake-png-3")
+        z.writestr("page2.jpg", b"fake-jpg-2")
+        z.writestr("not-an-image.txt", b"some-text")
+        z.writestr(".hidden.png", b"hidden")
+    manga_bytes = manga_buf.getvalue()
+    
+    token = "guest_manga_user"
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    # 2. Upload manga file
+    files = {
+        "file": ("manga.cbz", manga_bytes, "application/x-cbz")
+    }
+    data = {
+        "title": "Manga Test Book",
+        "type": "manga",
+        "total_pages": 0,
+        "convert_to_epub": "false"
+    }
+    
+    response = client.post("/api/books", headers=headers, data=data, files=files)
+    assert response.status_code == 200
+    book = response.json()
+    assert book["title"] == "Manga Test Book"
+    assert book["type"] == "manga"
+    assert book["total_pages"] == 3
+    book_id = book["id"]
+    
+    # 3. Retrieve Page Manifest (cached)
+    response = client.get(f"/api/books/{book_id}/manga/pages", headers=headers)
+    assert response.status_code == 200
+    manifest = response.json()
+    assert len(manifest["pages"]) == 3
+    assert manifest["pages"][0] == "page1.png"
+    assert manifest["pages"][1] == "page2.jpg"
+    assert manifest["pages"][2] == "sub/page3.png"
+    
+    # 4. Get Media Token
+    response = client.post(f"/api/books/{book_id}/media-token", headers=headers)
+    assert response.status_code == 200
+    media_token = response.json()["token"]
+    assert media_token is not None
+    
+    # 5. Stream Page Image
+    response = client.get(f"/api/books/{book_id}/manga/pages/0/image?token={media_token}")
+    assert response.status_code == 200
+    assert response.content == b"fake-png-1"
+    assert response.headers["content-type"] == "image/png"
+    
+    # Stream another page image (sub/page3.png is index 2)
+    response = client.get(f"/api/books/{book_id}/manga/pages/2/image?token={media_token}")
+    assert response.status_code == 200
+    assert response.content == b"fake-png-3"
+    assert response.headers["content-type"] == "image/png"
+    
+    # Try invalid page index
+    response = client.get(f"/api/books/{book_id}/manga/pages/5/image?token={media_token}")
+    assert response.status_code == 404
+    
+    # Try invalid token
+    response = client.get(f"/api/books/{book_id}/manga/pages/0/image?token=invalid-token")
+    assert response.status_code == 401
+    
+    # Clean up
+    client.delete(f"/api/books/{book_id}", headers=headers)
+

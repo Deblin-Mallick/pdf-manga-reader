@@ -1,5 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { LogOut, BookOpen } from 'lucide-react';
+import { Routes, Route, Navigate, useNavigate, useParams, useLocation } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { motion, AnimatePresence } from 'framer-motion';
 import Dashboard from './components/Dashboard';
 import Welcome from './components/Welcome';
 import PDFReader from './components/PDFReader';
@@ -36,122 +39,41 @@ export interface User {
   picture: string;
 }
 
+const pageVariants = {
+  initial: { opacity: 0, y: 15 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' as const } },
+  exit: { opacity: 0, y: -15, transition: { duration: 0.2, ease: 'easeIn' as const } }
+};
+
 export default function App() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const queryClient = useQueryClient();
+
   const [token, setToken] = useState<string | null>(
     localStorage.getItem('reader_jwt') || sessionStorage.getItem('reader_guest_id')
   );
-  const [user, setUser] = useState<User | null>(null);
-  const [books, setBooks] = useState<Book[]>([]);
-  const [currentBook, setCurrentBook] = useState<Book | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  // ID of the last-opened book — ref so it never triggers re-renders
-  const pendingBookIdRef = useRef<string | null>(
-    sessionStorage.getItem('reader_open_book_id')
-  );
-  
-  // Local configuration for Google Client ID
-  const [googleClientId, setGoogleClientId] = useState<string>(
-    localStorage.getItem('google_client_id') || ''
-  );
 
   // Fetch Google Client ID config from backend on mount
-  useEffect(() => {
-    fetch('/api/auth/config')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.google_client_id) {
-          setGoogleClientId(data.google_client_id);
-          localStorage.setItem('google_client_id', data.google_client_id);
-        }
-      })
-      .catch((err) => console.error('Failed to load backend config:', err));
-  }, []);
-
-  // Helper to make authenticated API requests
-  const apiFetch = useCallback(async (url: string, options: RequestInit = {}) => {
-    const headers = new Headers(options.headers || {});
-    if (token) {
-      headers.set('Authorization', `Bearer ${token}`);
-    }
-    
-    const res = await fetch(url, { ...options, headers });
-    if (res.status === 401 && token) {
-      // Token expired, log out
-      handleSignOut();
-      throw new Error('Session expired. Please log in again.');
-    }
-    return res;
-  }, [token]);
-
-  // Fetch current profile and books
-  const fetchUserData = useCallback(async () => {
-    if (!token) {
-      setUser(null);
-      setBooks([]);
-      return;
-    }
-
-    if (token.startsWith('guest_')) {
-      setUser({
-        id: token,
-        name: 'Guest Reader',
-        email: 'guest@local.dev',
-        picture: '',
-      });
-      setIsLoading(true);
-      try {
-        const booksRes = await apiFetch('/api/books');
-        if (booksRes.ok) {
-          const booksData: Book[] = await booksRes.json();
-          setBooks(booksData);
-          if (pendingBookIdRef.current) {
-            const restored = booksData.find((b) => b.id === pendingBookIdRef.current);
-            if (restored) setCurrentBook(restored);
-            pendingBookIdRef.current = null;
-          }
-        }
-      } catch (err) {
-        console.error('Failed to fetch guest books:', err);
-      } finally {
-        setIsLoading(false);
+  const { data: authConfig } = useQuery({
+    queryKey: ['authConfig'],
+    queryFn: async () => {
+      const res = await fetch('/api/auth/config');
+      if (!res.ok) throw new Error('Failed to load backend config');
+      const data = await res.json();
+      if (data.google_client_id) {
+        localStorage.setItem('google_client_id', data.google_client_id);
       }
-      return;
-    }
+      return data;
+    },
+    staleTime: Infinity,
+  });
 
-    setIsLoading(true);
-    try {
-      const profileRes = await apiFetch('/api/auth/me');
-      if (profileRes.ok) {
-        const profile = await profileRes.json();
-        setUser(profile);
-      }
-      
-      const booksRes = await apiFetch('/api/books');
-      if (booksRes.ok) {
-        const booksData: Book[] = await booksRes.json();
-        setBooks(booksData);
-        // Restore the previously open book after a page refresh
-        if (pendingBookIdRef.current) {
-          const restored = booksData.find((b) => b.id === pendingBookIdRef.current);
-          if (restored) setCurrentBook(restored);
-          pendingBookIdRef.current = null;
-        }
-      }
-    } catch (err) {
-      console.error('Failed to load user data:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [token, apiFetch]);
-
-  useEffect(() => {
-    fetchUserData();
-  }, [fetchUserData]);
+  const googleClientId = authConfig?.google_client_id || localStorage.getItem('google_client_id') || '';
 
   // Handle Google Token Callback
-  const handleGoogleCredentialResponse = useCallback(async (response: any) => {
-    setIsLoading(true);
-    try {
+  const loginMutation = useMutation({
+    mutationFn: async (response: any) => {
       const res = await fetch('/api/auth/google', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -162,27 +84,25 @@ export default function App() {
         const err = await res.json();
         throw new Error(err.detail || 'Failed to authenticate');
       }
-
-      const data = await res.json();
+      return res.json();
+    },
+    onSuccess: (data) => {
       localStorage.setItem('reader_jwt', data.token);
       localStorage.removeItem('reader_guest_mode');
       sessionStorage.removeItem('reader_guest_id');
       setToken(data.token);
-      setUser(data.user);
-      
-      // Load their books
-      const booksRes = await fetch('/api/books', {
-        headers: { 'Authorization': `Bearer ${data.token}` }
-      });
-      if (booksRes.ok) {
-        setBooks(await booksRes.json());
-      }
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Login failed');
-    } finally {
-      setIsLoading(false);
+      queryClient.setQueryData(['user', data.token], data.user);
+      queryClient.invalidateQueries({ queryKey: ['books', data.token] });
+      navigate('/');
+    },
+    onError: (err) => {
+      alert(err.message || 'Login failed');
     }
-  }, []);
+  });
+
+  const handleGoogleCredentialResponse = useCallback((response: any) => {
+    loginMutation.mutate(response);
+  }, [loginMutation]);
 
   // Initialize Google Login Sign-In Button
   const initGoogleLogin = useCallback(() => {
@@ -208,10 +128,165 @@ export default function App() {
     }
   }, [googleClientId, handleGoogleCredentialResponse]);
 
+  // Initialize login button
   useEffect(() => {
-    // Attempt login init
     initGoogleLogin();
   }, [googleClientId, initGoogleLogin]);
+
+  // Query User Profile
+  const { data: user, isLoading: isLoadingUser } = useQuery<User | null>({
+    queryKey: ['user', token],
+    queryFn: async () => {
+      if (!token) return null;
+      if (token.startsWith('guest_')) {
+        return {
+          id: token,
+          name: 'Guest Reader',
+          email: 'guest@local.dev',
+          picture: '',
+        };
+      }
+      const res = await fetch('/api/auth/me', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.status === 401) {
+        handleSignOut();
+        throw new Error('Session expired');
+      }
+      if (!res.ok) throw new Error('Failed to load profile');
+      return res.json();
+    },
+    enabled: !!token,
+  });
+
+  // Query Books Library
+  const { data: books = [], isLoading: isLoadingBooks } = useQuery<Book[]>({
+    queryKey: ['books', token],
+    queryFn: async () => {
+      if (!token) return [];
+      const res = await fetch('/api/books', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.status === 401) {
+        handleSignOut();
+        throw new Error('Session expired');
+      }
+      if (!res.ok) throw new Error('Failed to fetch books');
+      return res.json();
+    },
+    enabled: !!token,
+  });
+
+  // Logout mutation-like function
+  const handleSignOut = async () => {
+    try {
+      if (token && !token.startsWith('guest_')) {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+      }
+    } catch (err) {
+      console.error('Failed to log out session on backend:', err);
+    }
+
+    localStorage.removeItem('reader_jwt');
+    
+    // Generate a fresh unique guest ID to shift the user to a clean Guest Shelf
+    const guestId = 'guest_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    sessionStorage.setItem('reader_guest_id', guestId);
+    
+    setToken(guestId);
+    queryClient.clear();
+    navigate('/');
+  };
+
+  const handleBookUploadSuccess = (newBook: Book) => {
+    queryClient.setQueryData(['books', token], (oldBooks: Book[] | undefined) => {
+      if (!oldBooks) return [newBook];
+      return [newBook, ...oldBooks];
+    });
+  };
+
+  // Delete Book Mutation
+  const deleteBookMutation = useMutation({
+    mutationFn: async (bookId: string) => {
+      const res = await fetch(`/api/books/${bookId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Failed to delete book');
+    },
+    onSuccess: (_, bookId) => {
+      queryClient.setQueryData(['books', token], (oldBooks: Book[] | undefined) => {
+        if (!oldBooks) return [];
+        return oldBooks.filter((b) => b.id !== bookId);
+      });
+    },
+    onError: () => {
+      alert('Failed to delete book');
+    }
+  });
+
+  // Convert Book Mutation
+  const convertBookMutation = useMutation({
+    mutationFn: async (bookId: string) => {
+      const res = await fetch(`/api/books/${bookId}/convert`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Unknown error');
+      }
+      return res.json();
+    },
+    onSuccess: (updatedBook) => {
+      queryClient.setQueryData(['books', token], (oldBooks: Book[] | undefined) => {
+        if (!oldBooks) return [updatedBook];
+        return oldBooks.map((b) => (b.id === updatedBook.id ? updatedBook : b));
+      });
+      alert('Book successfully converted to EPUB!');
+    },
+    onError: (err: any) => {
+      alert('Conversion failed: ' + err.message);
+    }
+  });
+
+  // Update Progress Mutation
+  const updateProgressMutation = useMutation({
+    mutationFn: async ({
+      bookId,
+      progress
+    }: {
+      bookId: string;
+      progress: {
+        current_page: number;
+        zoom: number;
+        view_mode: string;
+        scroll_position: number;
+        reading_direction: 'ltr' | 'rtl';
+      };
+    }) => {
+      const res = await fetch(`/api/books/${bookId}/progress`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(progress),
+      });
+      if (!res.ok) throw new Error('Failed to sync progress');
+      return res.json();
+    },
+    onSuccess: (updatedBook) => {
+      // Update books query data directly for snappy UI updates
+      queryClient.setQueryData(['books', token], (oldBooks: Book[] | undefined) => {
+        if (!oldBooks) return [updatedBook];
+        return oldBooks.map((b) => (b.id === updatedBook.id ? updatedBook : b));
+      });
+    }
+  });
 
   // Re-initialize Google Login button in the header if Guest mode is active
   useEffect(() => {
@@ -223,67 +298,157 @@ export default function App() {
     }
   }, [user, googleClientId, initGoogleLogin]);
 
-  const handleSignOut = async () => {
-    try {
-      if (token) {
-        await fetch('/api/auth/logout', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-      }
-    } catch (err) {
-      console.error('Failed to log out guest session on backend:', err);
-    }
+  // If there is no token, render Welcome onboarding routes only
+  if (!token) {
+    return (
+      <AnimatePresence mode="wait">
+        <Routes location={location} key={location.pathname}>
+          <Route
+            path="/welcome"
+            element={
+              <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" className="flex-1 flex flex-col">
+                <Welcome
+                  googleClientId={googleClientId}
+                  onInitGoogleAuth={initGoogleLogin}
+                  onContinueAsGuest={() => {
+                    const guestId = 'guest_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+                    sessionStorage.setItem('reader_guest_id', guestId);
+                    setToken(guestId);
+                    navigate('/');
+                  }}
+                />
+              </motion.div>
+            }
+          />
+          <Route path="*" element={<Navigate to="/welcome" replace />} />
+        </Routes>
+      </AnimatePresence>
+    );
+  }
 
-    localStorage.removeItem('reader_jwt');
-    
-    // Generate a fresh unique guest ID to shift the user to a clean Guest Shelf
-    const guestId = 'guest_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-    sessionStorage.setItem('reader_guest_id', guestId);
-    
-    setToken(guestId);
-    setCurrentBook(null);
+  return (
+    <div className="app-container">
+      {/* Header Panel */}
+      <header className="glass-panel m-4 px-6 py-3 flex justify-between items-center z-10">
+        <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
+          <BookOpen size={28} className="pulse-glow text-[var(--accent-primary)]" />
+          <h1 className="text-xl bg-gradient-to-r from-white to-[var(--text-secondary)] bg-clip-text text-transparent font-semibold">
+            SleekReader
+          </h1>
+        </div>
+
+        <div className="flex items-center gap-4">
+          {/* User Section */}
+          {user && (
+            <div className="flex items-center gap-3">
+              {user.picture ? (
+                <img src={user.picture} alt={user.name} className="w-9 h-9 rounded-full border-1.5 border-[var(--accent-secondary)]" />
+              ) : (
+                <div className="w-9 h-9 rounded-full bg-[var(--accent-primary)] flex items-center justify-center font-bold">
+                  {user.name[0]}
+                </div>
+              )}
+              <span className="text-sm text-[var(--text-primary)] font-medium hidden md:inline">
+                {user.name}
+              </span>
+              {!user.id.startsWith('guest_') ? (
+                <button onClick={handleSignOut} className="btn-secondary py-2 px-3" title="Log Out">
+                  <LogOut size={16} />
+                </button>
+              ) : (
+                /* Google login button in header for Guest users */
+                googleClientId && (
+                  <div id="google-signin-btn" className="inline-block"></div>
+                )
+              )}
+            </div>
+          )}
+        </div>
+      </header>
+
+      {/* Main Body */}
+      <main className="flex-1 px-4 pb-8 flex flex-col">
+        {isLoadingBooks || isLoadingUser ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-4">
+            <div className="w-12 h-12 rounded-full border-4 border-[var(--border-glass)] border-t-[var(--accent-primary)] animate-spin" />
+            <p className="text-[var(--text-secondary)]">Loading library...</p>
+          </div>
+        ) : (
+          <AnimatePresence mode="wait">
+            <Routes location={location} key={location.pathname}>
+              <Route
+                path="/"
+                element={
+                  <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" className="flex-1 flex flex-col">
+                    <Dashboard
+                      books={books}
+                      user={user || null}
+                      googleClientId={googleClientId}
+                      onSelectBook={(book) => navigate(`/book/${book.id}`)}
+                      onUploadSuccess={handleBookUploadSuccess}
+                      onDeleteBook={(id) => {
+                        if (confirm('Are you sure you want to delete this book?')) {
+                          deleteBookMutation.mutate(id);
+                        }
+                      }}
+                      onConvertBook={(id) => {
+                        if (confirm('Would you like to convert this PDF book to EPUB format?')) {
+                          convertBookMutation.mutate(id);
+                        }
+                      }}
+                      onInitGoogleAuth={initGoogleLogin}
+                    />
+                  </motion.div>
+                }
+              />
+              <Route
+                path="/book/:id"
+                element={
+                  <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" className="flex-1 flex flex-col">
+                    <ReaderWrapper
+                      books={books}
+                      token={token}
+                      updateProgressMutation={updateProgressMutation}
+                    />
+                  </motion.div>
+                }
+              />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </AnimatePresence>
+        )}
+      </main>
+    </div>
+  );
+}
+
+interface ReaderWrapperProps {
+  books: Book[];
+  token: string | null;
+  updateProgressMutation: any;
+}
+
+function ReaderWrapper({ books, token, updateProgressMutation }: ReaderWrapperProps) {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const book = books.find((b) => b.id === id);
+
+  if (!book) {
+    return (
+      <div className="text-center mt-10">
+        <h2 className="mb-4 text-xl">Book not found</h2>
+        <button className="btn-secondary" onClick={() => navigate('/')}>
+          Go back to shelf
+        </button>
+      </div>
+    );
+  }
+
+  const handleBack = () => {
+    navigate('/');
   };
 
-  const handleBookUploadSuccess = (newBook: Book) => {
-    setBooks((prev) => [newBook, ...prev]);
-  };
-
-  const handleBookDelete = async (bookId: string) => {
-    if (!confirm('Are you sure you want to delete this book?')) return;
-    
-    try {
-      const res = await apiFetch(`/api/books/${bookId}`, { method: 'DELETE' });
-      if (res.ok) {
-        setBooks((prev) => prev.filter((b) => b.id !== bookId));
-      }
-    } catch (err) {
-      alert('Failed to delete book');
-    }
-  };
-
-  const handleBookConvert = async (bookId: string) => {
-    if (!confirm('Would you like to convert this PDF book to EPUB format?')) return;
-    setIsLoading(true);
-    try {
-      const res = await apiFetch(`/api/books/${bookId}/convert`, { method: 'POST' });
-      if (res.ok) {
-        const updated = await res.json();
-        setBooks((prev) => prev.map((b) => (b.id === bookId ? updated : b)));
-        alert('Book successfully converted to EPUB!');
-      } else {
-        const err = await res.json();
-        alert('Conversion failed: ' + (err.detail || 'Unknown error'));
-      }
-    } catch (err) {
-      console.error(err);
-      alert('An error occurred during conversion.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleUpdateProgress = useCallback(async (
+  const handleUpdateProgress = async (
     bookId: string,
     progress: {
       current_page: number;
@@ -293,154 +458,35 @@ export default function App() {
       reading_direction: 'ltr' | 'rtl';
     }
   ) => {
-    try {
-      const res = await apiFetch(`/api/books/${bookId}/progress`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(progress),
-      });
-      if (res.ok) {
-        const updated = await res.json();
-        // Update books list in background
-        setBooks((prev) => prev.map((b) => (b.id === bookId ? updated : b)));
-        // If it's the active book, update current state using functional update
-        setCurrentBook((curr) => (curr && curr.id === bookId ? updated : curr));
-      }
-    } catch (err) {
-      console.error('Failed to sync progress:', err);
-    }
-  }, [apiFetch]);
+    updateProgressMutation.mutate({ bookId, progress });
+  };
 
-  const handleBack = useCallback(() => {
-    sessionStorage.removeItem('reader_open_book_id');
-    setCurrentBook(null);
-    fetchUserData();
-  }, [fetchUserData]);
-
-  // Persist the open book ID whenever it changes
-  useEffect(() => {
-    if (currentBook) {
-      sessionStorage.setItem('reader_open_book_id', currentBook.id);
-    } else {
-      sessionStorage.removeItem('reader_open_book_id');
-    }
-  }, [currentBook]);
-
-  if (!user && !isLoading) {
+  if (book.type === 'pdf') {
     return (
-      <div className="app-container">
-        <Welcome 
-          googleClientId={googleClientId}
-          onInitGoogleAuth={initGoogleLogin}
-          onContinueAsGuest={() => {
-            const guestId = 'guest_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-            sessionStorage.setItem('reader_guest_id', guestId);
-            setToken(guestId);
-          }}
-        />
-      </div>
+      <PDFReader
+        book={book}
+        token={token}
+        onBack={handleBack}
+        onUpdateProgress={handleUpdateProgress}
+      />
+    );
+  } else if (book.type === 'epub') {
+    return (
+      <EPUBReader
+        book={book}
+        token={token}
+        onBack={handleBack}
+        onUpdateProgress={handleUpdateProgress}
+      />
+    );
+  } else {
+    return (
+      <MangaReader
+        book={book}
+        token={token}
+        onBack={handleBack}
+        onUpdateProgress={handleUpdateProgress}
+      />
     );
   }
-
-  return (
-    <div className="app-container">
-      {/* Header Panel */}
-      <header className="glass-panel" style={{ margin: '16px', padding: '12px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }} onClick={() => setCurrentBook(null)} className="cursor-pointer">
-          <BookOpen size={28} className="pulse-glow" style={{ color: 'var(--accent-primary)' }} />
-          <h1 style={{ fontSize: '1.4rem', background: 'linear-gradient(135deg, #fff 30%, var(--text-secondary) 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-            SleekReader
-          </h1>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          {/* User Section */}
-          {user && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              {user.picture ? (
-                <img src={user.picture} alt={user.name} style={{ width: '36px', height: '36px', borderRadius: '50%', border: '1.5px solid var(--accent-secondary)' }} />
-              ) : (
-                <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'var(--accent-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
-                  {user.name[0]}
-                </div>
-              )}
-              <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 500 }} className="desktop-only">
-                {user.name}
-              </span>
-              {!user.id.startsWith('guest_') ? (
-                <button onClick={handleSignOut} className="btn-secondary" style={{ padding: '8px 12px' }} title="Log Out">
-                  <LogOut size={16} />
-                </button>
-              ) : (
-                /* Google login button in header for Guest users */
-                googleClientId && (
-                  <div id="google-signin-btn" style={{ display: 'inline-block' }}></div>
-                )
-              )}
-            </div>
-          )}
-        </div>
-      </header>
-
-      {/* Main Body */}
-      <main style={{ flex: 1, padding: '0 16px 32px 16px', display: 'flex', flexDirection: 'column' }}>
-        {isLoading ? (
-          <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ width: '48px', height: '48px', borderRadius: '50%', border: '4px solid var(--border-glass)', borderTopColor: 'var(--accent-primary)', animation: 'spin 1s linear infinite' }} />
-            <p style={{ color: 'var(--text-secondary)' }}>Loading library...</p>
-          </div>
-        ) : currentBook ? (
-          /* Reader Section */
-          currentBook.type === 'pdf' ? (
-            <PDFReader 
-              book={currentBook} 
-              token={token}
-              onBack={handleBack} 
-              onUpdateProgress={handleUpdateProgress} 
-            />
-          ) : currentBook.type === 'epub' ? (
-            <EPUBReader 
-              book={currentBook} 
-              token={token}
-              onBack={handleBack} 
-              onUpdateProgress={handleUpdateProgress} 
-            />
-          ) : (
-            <MangaReader 
-              book={currentBook} 
-              token={token}
-              onBack={handleBack} 
-              onUpdateProgress={handleUpdateProgress} 
-            />
-          )
-        ) : (
-          /* Dashboard Shelf */
-          <Dashboard 
-            books={books} 
-            user={user}
-            googleClientId={googleClientId}
-            onSelectBook={(book) => setCurrentBook(book)} 
-            onUploadSuccess={handleBookUploadSuccess}
-            onDeleteBook={handleBookDelete}
-            onConvertBook={handleBookConvert}
-            onInitGoogleAuth={initGoogleLogin}
-          />
-        )}
-      </main>
-
-
-
-      {/* Add spin animation locally for loader */}
-      <style>{`
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-        .cursor-pointer { cursor: pointer; }
-        @media (max-width: 768px) {
-          .desktop-only { display: none !important; }
-        }
-      `}</style>
-    </div>
-  );
 }

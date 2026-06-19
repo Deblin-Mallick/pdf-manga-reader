@@ -2,7 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Upload, Trash2, Book, FileText, Search, Play, Plus, BookOpen, RefreshCw } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import JSZip from 'jszip';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Book as BookType, User } from '../App';
+import { cn } from '@/lib/utils';
 
 // Setup PDF.js worker source via CDN for flawless Vite bundling
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
@@ -239,93 +241,66 @@ export default function Dashboard({
   });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '32px', maxWidth: '1200px', width: '100%', margin: '0 auto' }}>
+    <div className="flex flex-col gap-8 max-w-[1200px] w-full mx-auto">
       
       {/* Upload Zone */}
       <section 
-        className={`glass-panel ${isDragging ? 'dragging-active' : ''}`}
+        className={cn(
+          "glass-panel border-2 border-dashed border-[var(--border-glass)] p-10 text-center cursor-pointer relative overflow-hidden flex flex-col items-center justify-center gap-4 transition-all duration-300",
+          isDragging ? "border-[var(--accent-primary)] shadow-[var(--shadow-neon-purple)] bg-[rgba(139,92,246,0.05)]" : ""
+        )}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        style={{
-          border: '2px dashed var(--border-glass)',
-          padding: '40px',
-          textAlign: 'center',
-          cursor: 'pointer',
-          position: 'relative',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '16px',
-        }}
         onClick={() => fileInputRef.current?.click()}
       >
         <input 
           type="file" 
           ref={fileInputRef} 
-          style={{ display: 'none' }} 
+          className="hidden" 
           accept=".pdf,.cbz,.zip"
           onChange={handleFileSelect}
         />
         
         {uploadStatus ? (
-          <div style={{ width: '100%', maxWidth: '300px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <span style={{ fontSize: '0.95rem', color: 'var(--text-primary)', fontWeight: 500 }}>
+          <div className="w-full max-w-[300px] flex flex-col gap-3">
+            <span className="text-sm font-medium text-[var(--text-primary)]">
               {uploadStatus}
             </span>
-            <div style={{ width: '100%', height: '6px', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
+            <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
               <div 
-                style={{ 
-                  height: '100%', 
-                  width: `${uploadProgress}%`, 
-                  background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary))',
-                  transition: 'width 0.2s ease-out'
-                }} 
+                className="h-full bg-gradient-to-r from-[var(--accent-primary)] to-[var(--accent-secondary)] transition-all duration-200"
+                style={{ width: `${uploadProgress}%` }} 
               />
             </div>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            <span className="text-xs text-[var(--text-muted)]">
               {uploadProgress}%
             </span>
           </div>
         ) : (
           <>
-            <div style={{ padding: '16px', borderRadius: '50%', background: 'rgba(139, 92, 246, 0.06)', color: 'var(--accent-primary)', display: 'inline-flex' }} className="pulse-glow">
+            <div className="p-4 rounded-full bg-[rgba(139,92,246,0.06)] text-[var(--accent-primary)] inline-flex pulse-glow">
               <Upload size={32} />
             </div>
             <div>
-              <h3 style={{ fontSize: '1.2rem', marginBottom: '6px', color: '#fff' }}>Drag & Drop books or manga here</h3>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Supports PDF documents, .CBZ and .ZIP manga archives</p>
+              <h3 className="text-lg font-semibold mb-1.5 text-white">Drag & Drop books or manga here</h3>
+              <p className="text-xs text-[var(--text-secondary)]">Supports PDF documents, .CBZ and .ZIP manga archives</p>
             </div>
             <button className="btn-primary" type="button" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}>
               <Plus size={16} /> Choose File
             </button>
             <div 
               onClick={(e) => e.stopPropagation()} 
-              style={{ 
-                marginTop: '8px', 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '8px', 
-                fontSize: '0.85rem', 
-                color: 'var(--text-secondary)',
-                cursor: 'default'
-              }}
+              className="mt-2 flex items-center gap-2 text-xs text-[var(--text-secondary)] cursor-default"
             >
               <input 
                 type="checkbox" 
                 id="epub-convert-checkbox" 
                 checked={convertToEpub} 
                 onChange={(e) => setConvertToEpub(e.target.checked)}
-                style={{ 
-                  cursor: 'pointer',
-                  accentColor: 'var(--accent-primary)',
-                  width: '16px',
-                  height: '16px'
-                }}
+                className="cursor-pointer accent-[var(--accent-primary)] w-4 h-4"
               />
-              <label htmlFor="epub-convert-checkbox" style={{ cursor: 'pointer', userSelect: 'none' }}>
+              <label htmlFor="epub-convert-checkbox" className="cursor-pointer select-none">
                 Convert PDF uploads to EPUB format
               </label>
             </div>
@@ -333,27 +308,22 @@ export default function Dashboard({
         )}
       </section>
 
-
       {/* Catalog Filters and Search */}
-      <section style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+      <section className="flex flex-col gap-5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           
           {/* Tabs */}
-          <div className="glass-panel" style={{ padding: '4px', display: 'flex', gap: '4px', borderRadius: '12px' }}>
+          <div className="glass-panel p-1 flex gap-1 rounded-xl">
             {(['all', 'pdf', 'cbz', 'completed'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: '8px',
-                  fontSize: '0.85rem',
-                  fontWeight: 500,
-                  textTransform: 'capitalize',
-                  backgroundColor: activeTab === tab ? 'rgba(255,255,255,0.06)' : 'transparent',
-                  color: activeTab === tab ? '#fff' : 'var(--text-secondary)',
-                  border: activeTab === tab ? '1px solid var(--border-glass)' : '1px solid transparent',
-                }}
+                className={cn(
+                  "px-4 py-2 rounded-lg text-xs md:text-sm font-medium capitalize border transition-all duration-200",
+                  activeTab === tab 
+                    ? "bg-white/5 text-white border-[var(--border-glass)]" 
+                    : "bg-transparent text-[var(--text-secondary)] border-transparent hover:text-white"
+                )}
               >
                 {tab === 'cbz' ? 'Manga (CBZ)' : tab === 'pdf' ? 'Books (PDF/EPUB)' : tab}
               </button>
@@ -361,161 +331,152 @@ export default function Dashboard({
           </div>
 
           {/* Search bar */}
-          <div className="glass-panel" style={{ display: 'flex', alignItems: 'center', padding: '6px 16px', gap: '8px', width: '100%', maxWidth: '300px' }}>
-            <Search size={16} style={{ color: 'var(--text-muted)' }} />
+          <div className="glass-panel flex items-center px-4 py-2 gap-2 w-full max-w-[300px]">
+            <Search size={16} className="text-[var(--text-muted)]" />
             <input 
               type="text" 
               placeholder="Search library..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ width: '100%', border: 'none', background: 'none', color: '#fff', fontSize: '0.9rem', outline: 'none' }}
+              className="w-full border-none bg-transparent text-white text-sm outline-none placeholder:text-[var(--text-muted)]"
             />
           </div>
         </div>
 
         {/* Shelf Books Grid */}
-        {filteredBooks.length > 0 ? (
-          <div className="shelf-grid">
-            {filteredBooks.map((book) => {
-              const progressPercentage = book.total_pages > 0 
-                ? Math.round((book.current_page / book.total_pages) * 100)
-                : 0;
+        <AnimatePresence mode="popLayout">
+          {filteredBooks.length > 0 ? (
+            <motion.div 
+              layout
+              className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6"
+            >
+              {filteredBooks.map((book) => {
+                const progressPercentage = book.total_pages > 0 
+                  ? Math.round((book.current_page / book.total_pages) * 100)
+                  : 0;
 
-              return (
-                <div 
-                  key={book.id} 
-                  className="glass-panel glass-panel-interactive fade-in"
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    overflow: 'hidden',
-                    position: 'relative',
-                    height: '350px',
-                  }}
-                >
-                  {/* Cover Section */}
-                  <div style={{ flex: 1, position: 'relative', overflow: 'hidden', backgroundColor: '#0f0f15', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {book.cover_path ? (
-                      <img 
-                        src={book.cover_path} 
-                        alt={book.title} 
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.5s ease' }} 
-                        className="book-cover-img"
-                      />
-                    ) : (
-                      /* Fallback Cover Gradient */
-                      <div 
-                        style={{ 
-                          width: '100%', 
-                          height: '100%', 
-                          background: book.type === 'pdf' 
-                            ? 'linear-gradient(135deg, #4c1d95 0%, #1e1b4b 100%)' 
-                            : 'linear-gradient(135deg, #0f766e 0%, #0f172a 100%)',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          justifyContent: 'center',
-                          alignItems: 'center',
-                          padding: '16px',
-                          textAlign: 'center'
-                        }}
-                      >
-                        {book.type === 'pdf' ? <FileText size={42} style={{ color: 'var(--accent-primary)', marginBottom: '8px' }} /> : <BookOpen size={42} style={{ color: 'var(--accent-secondary)', marginBottom: '8px' }} />}
-                        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'rgba(255,255,255,0.7)', display: 'block', maxWidth: '100%', textOverflow: 'ellipsis', overflow: 'hidden' }}>{book.title}</span>
-                      </div>
-                    )}
-
-                    {/* Format Tag */}
-                    <div style={{ position: 'absolute', top: '10px', left: '10px', padding: '4px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', backgroundColor: book.type === 'pdf' ? 'rgba(139,92,246,0.9)' : 'rgba(6,182,212,0.9)', color: '#fff' }}>
-                      {book.type === 'pdf' ? 'pdf' : 'manga'}
-                    </div>
-
-                    {/* Actions Hover Overlay */}
-                    <div className="card-overlay" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', opacity: 0, transition: 'opacity 0.25s ease' }}>
-                      <button 
-                        onClick={() => onSelectBook(book)}
-                        className="btn-primary" 
-                        style={{ padding: '10px 16px', borderRadius: '50px' }}
-                      >
-                        <Play size={16} fill="white" /> Read
-                      </button>
-                      {book.type === 'pdf' && (
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); onConvertBook(book.id); }}
-                          style={{ backgroundColor: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)', color: 'var(--accent-primary)', padding: '10px', borderRadius: '50%' }}
-                          title="Convert PDF to EPUB"
-                        >
-                          <RefreshCw size={16} />
-                        </button>
-                      )}
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); onDeleteBook(book.id); }}
-                        style={{ backgroundColor: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#ef4444', padding: '10px', borderRadius: '50%' }}
-                        title="Delete Book"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Metadata Section */}
-                  <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid var(--border-glass)' }}>
-                    <h4 
-                      style={{ 
-                        fontSize: '0.95rem', 
-                        whiteSpace: 'nowrap', 
-                        overflow: 'hidden', 
-                        textOverflow: 'ellipsis',
-                        color: '#fff'
-                      }}
-                      title={book.title}
-                    >
-                      {book.title}
-                    </h4>
-                    
-                    {/* Progress tracking */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                        <span>Page {book.current_page} of {book.total_pages}</span>
-                        <span>{progressPercentage}%</span>
-                      </div>
-                      <div style={{ width: '100%', height: '4px', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
-                        <div 
-                          style={{ 
-                            height: '100%', 
-                            width: `${progressPercentage}%`, 
-                            backgroundColor: progressPercentage >= 100 ? '#22c55e' : 'var(--accent-primary)',
-                            borderRadius: '2px' 
-                          }} 
+                return (
+                  <motion.div 
+                    layout
+                    key={book.id}
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    transition={{ duration: 0.25 }}
+                    className="glass-panel group flex flex-col overflow-hidden relative h-[350px] transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:border-[var(--border-glass-active)]"
+                  >
+                    {/* Cover Section */}
+                    <div className="flex-1 relative overflow-hidden bg-[#0f0f15] flex items-center justify-center">
+                      {book.cover_path ? (
+                        <img 
+                          src={book.cover_path} 
+                          alt={book.title} 
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
                         />
+                      ) : (
+                        /* Fallback Cover Gradient */
+                        <div 
+                          className={cn(
+                            "w-full h-full flex flex-col justify-center items-center p-4 text-center",
+                            book.type === 'pdf' 
+                              ? 'bg-gradient-to-br from-[#4c1d95] to-[#1e1b4b]' 
+                              : 'bg-gradient-to-br from-[#0f766e] to-[#0f172a]'
+                          )}
+                        >
+                          {book.type === 'pdf' ? (
+                            <FileText size={42} className="text-[var(--accent-primary)] mb-2" />
+                          ) : (
+                            <BookOpen size={42} className="text-[var(--accent-secondary)] mb-2" />
+                          )}
+                          <span className="text-xs font-semibold text-white/70 block max-w-full truncate">{book.title}</span>
+                        </div>
+                      )}
+
+                      {/* Format Tag */}
+                      <div 
+                        className={cn(
+                          "absolute top-2.5 left-2.5 px-2 py-1 rounded text-[10px] font-semibold uppercase tracking-wider text-white",
+                          book.type === 'pdf' ? 'bg-[var(--accent-primary)]/90' : 'bg-[var(--accent-secondary)]/90'
+                        )}
+                      >
+                        {book.type === 'pdf' ? 'pdf' : 'manga'}
+                      </div>
+
+                      {/* Actions Hover Overlay */}
+                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <button 
+                          onClick={() => onSelectBook(book)}
+                          className="btn-primary py-2.5 px-4 rounded-full"
+                        >
+                          <Play size={16} fill="white" /> Read
+                        </button>
+                        {book.type === 'pdf' && (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); onConvertBook(book.id); }}
+                            className="bg-[var(--accent-primary)]/15 border border-[var(--accent-primary)]/30 text-[var(--accent-primary)] p-2.5 rounded-full hover:bg-[var(--accent-primary)]/30 transition-all duration-200"
+                            title="Convert PDF to EPUB"
+                          >
+                            <RefreshCw size={16} />
+                          </button>
+                        )}
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); onDeleteBook(book.id); }}
+                          className="bg-red-500/15 border border-red-500/30 text-red-500 p-2.5 rounded-full hover:bg-red-500/30 transition-all duration-200"
+                          title="Delete Book"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </div>
                     </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="glass-panel" style={{ padding: '60px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-            <Book size={48} style={{ color: 'var(--text-muted)' }} />
-            <div>
-              <h3 style={{ fontSize: '1.2rem', color: '#fff', marginBottom: '4px' }}>No books matching filters</h3>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                {books.length === 0 ? 'Upload a PDF or CBZ file to start reading.' : 'Try changing your search query or shelf tabs.'}
-              </p>
-            </div>
-          </div>
-        )}
-      </section>
 
-      {/* local styling for card overlays */}
-      <style>{`
-        .glass-panel-interactive:hover .card-overlay {
-          opacity: 1 !important;
-        }
-        .glass-panel-interactive:hover .book-cover-img {
-          transform: scale(1.05);
-        }
-      `}</style>
+                    {/* Metadata Section */}
+                    <div className="p-4 flex flex-col gap-2 border-t border-[var(--border-glass)]">
+                      <h4 
+                        className="text-sm font-semibold truncate text-white"
+                        title={book.title}
+                      >
+                        {book.title}
+                      </h4>
+                      
+                      {/* Progress tracking */}
+                      <div className="flex flex-col gap-1">
+                        <div className="flex justify-between text-[10px] text-[var(--text-secondary)]">
+                          <span>Page {book.current_page} of {book.total_pages}</span>
+                          <span>{progressPercentage}%</span>
+                        </div>
+                        <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
+                          <div 
+                            className={cn(
+                              "h-full rounded-full transition-all duration-300",
+                              progressPercentage >= 100 ? 'bg-green-500' : 'bg-[var(--accent-primary)]'
+                            )}
+                            style={{ width: `${progressPercentage}%` }} 
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </motion.div>
+          ) : (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="glass-panel p-16 text-center flex flex-col items-center gap-4"
+            >
+              <Book size={48} className="text-[var(--text-muted)]" />
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-1">No books matching filters</h3>
+                <p className="text-xs text-[var(--text-secondary)]">
+                  {books.length === 0 ? 'Upload a PDF or CBZ file to start reading.' : 'Try changing your search query or shelf tabs.'}
+                </p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </section>
     </div>
   );
 }

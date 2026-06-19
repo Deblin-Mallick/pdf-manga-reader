@@ -44,7 +44,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: /mnt/database_server/postgresql
+      device: /mnt/database_server/postgresql/data
 
   uploads_data:
     driver: local

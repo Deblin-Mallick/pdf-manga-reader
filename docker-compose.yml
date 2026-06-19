@@ -3,7 +3,7 @@ version: '3.8'
 services:
   db:
     image: postgres:15-alpine
-    container_name: pdf-manga-reader-db
+    container_name: pdf-manga-reader-db-${USER_ID:-default}
     environment:
       POSTGRES_USER: ${DB_USER:-reader_user}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
@@ -16,9 +16,9 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    container_name: pdf-manga-reader-backend
+    container_name: pdf-manga-reader-backend-${USER_ID:-default}
     ports:
-      - "8000:8000"
+      - "${PORT:-8000}:8000"
     environment:
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - JWT_SECRET=${JWT_SECRET}
@@ -35,3 +35,4 @@ volumes:
   pgdata:
   uploads_data:
   covers_data:
+

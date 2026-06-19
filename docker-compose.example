@@ -32,37 +32,9 @@ services:
       - sqlite_data:/app/data
     restart: unless-stopped
 
-# volumes:
-#   pgdata:
-#   uploads_data:
-#   covers_data:
-#   sqlite_data:
-
 volumes:
   pgdata:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /mnt/database_server/postgresql
-
   uploads_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /mnt/database_server/uploads
-
   covers_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /mnt/database_server/covers
-
   sqlite_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /mnt/database_server/data
+

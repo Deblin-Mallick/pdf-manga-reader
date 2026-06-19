@@ -221,10 +221,8 @@ export default function App() {
 
   const handleSignOut = () => {
     localStorage.removeItem('reader_jwt');
-    localStorage.removeItem('reader_guest_mode');
+    localStorage.setItem('reader_guest_mode', 'true');
     setToken(null);
-    setUser(null);
-    setBooks([]);
     setCurrentBook(null);
   };
 

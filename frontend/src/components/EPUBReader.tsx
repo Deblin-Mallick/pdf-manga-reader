@@ -131,6 +131,9 @@ export default function EPUBReader({
   onBack,
   onUpdateProgress,
 }: EPUBReaderProps) {
+  const localKey = `reader_prefs_${book.id}`;
+  const savedPrefs = (() => { try { return JSON.parse(localStorage.getItem(localKey) || '{}'); } catch { return {}; } })();
+
   const [zip, setZip] = useState<JSZip | null>(null);
   const [spineHrefs, setSpineHrefs] = useState<string[]>([]);
   const [toc, setToc] = useState<TOCItem[]>([]);
@@ -138,13 +141,16 @@ export default function EPUBReader({
   const [pageHtml, setPageHtml] = useState<string>('');
   
   const [settings, setSettings] = useState<ReaderSettings>({
-    fontSize: book.zoom ? Math.round(book.zoom * 18) : 18,
-    lineHeight: 1.6,
-    theme: book.view_mode === 'dark' || book.view_mode === 'sepia' || book.view_mode === 'light' 
-      ? book.view_mode 
-      : 'dark',
-    fontFamily: 'literata',
+    fontSize: savedPrefs.fontSize ?? (book.zoom ? Math.round(book.zoom * 18) : 18),
+    lineHeight: savedPrefs.lineHeight ?? 1.6,
+    theme: savedPrefs.theme ?? (
+      book.view_mode === 'dark' || book.view_mode === 'sepia' || book.view_mode === 'light'
+        ? book.view_mode
+        : 'dark'
+    ),
+    fontFamily: savedPrefs.fontFamily ?? 'literata',
   });
+
 
   const [loading, setLoading] = useState<boolean>(true);
   const [loadingText, setLoadingText] = useState<string>('Downloading EPUB...');
@@ -164,6 +170,11 @@ export default function EPUBReader({
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState<boolean>(false);
   const [showFooter, setShowFooter] = useState<boolean>(false);
+
+  // Persist all reader settings to localStorage on change
+  useEffect(() => {
+    localStorage.setItem(localKey, JSON.stringify(settings));
+  }, [settings, localKey]);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const blobUrlsRef = useRef<string[]>([]);

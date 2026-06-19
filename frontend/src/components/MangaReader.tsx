@@ -24,14 +24,22 @@ export default function MangaReader({
   onBack,
   onUpdateProgress,
 }: MangaReaderProps) {
+  const localKey = `reader_prefs_${book.id}`;
+  const savedPrefs = (() => { try { return JSON.parse(localStorage.getItem(localKey) || '{}'); } catch { return {}; } })();
+
   const [pages, setPages] = useState<string[]>([]);
   const [mediaToken, setMediaToken] = useState<string | null>(null);
   
   const [currentPage, setCurrentPage] = useState(book.current_page || 1);
   const [viewMode, setViewMode] = useState<string>(book.view_mode || 'single-page'); // single-page, double-page, webtoon
   const [readingDirection, setReadingDirection] = useState<'ltr' | 'rtl'>(book.reading_direction || 'rtl');
-  const [brightness, setBrightness] = useState<number>(100);
-  const [contrast, setContrast] = useState<number>(100);
+  const [brightness, setBrightness] = useState<number>(savedPrefs.brightness ?? 100);
+  const [contrast, setContrast] = useState<number>(savedPrefs.contrast ?? 100);
+
+  // Persist ephemeral prefs to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem(localKey, JSON.stringify({ brightness, contrast }));
+  }, [brightness, contrast, localKey]);
   
   const [loading, setLoading] = useState(true);
   const [loadingText, setLoadingText] = useState('Initializing reader...');
@@ -140,10 +148,12 @@ export default function MangaReader({
 
   // Debounced Sync Progress for Webtoon scrolling
   const debouncedSyncProgress = useCallback((page: number, scrollPos: number) => {
+    pendingProgressRef.current = { page, scroll: scrollPos };
     if (syncTimeoutRef.current) {
       clearTimeout(syncTimeoutRef.current);
     }
     syncTimeoutRef.current = setTimeout(() => {
+      pendingProgressRef.current = null;
       onUpdateProgress(book.id, {
         current_page: page,
         zoom: 1.0,
@@ -154,14 +164,30 @@ export default function MangaReader({
     }, 1000); // 1-second debounce to protect SQLite database from locking
   }, [book.id, viewMode, readingDirection, onUpdateProgress]);
 
-  // Cleanup timers on unmount
+  // Cleanup timers on unmount + flush any pending progress before page unloads
+  const pendingProgressRef = useRef<{ page: number; scroll: number } | null>(null);
+
   useEffect(() => {
-    return () => {
-      if (syncTimeoutRef.current) {
-        clearTimeout(syncTimeoutRef.current);
+    const handleUnload = () => {
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+      const p = pendingProgressRef.current;
+      if (p) {
+        const payload = JSON.stringify({
+          current_page: p.page, zoom: 1.0, view_mode: viewMode,
+          scroll_position: p.scroll, reading_direction: readingDirection,
+        });
+        navigator.sendBeacon(
+          `/api/books/${book.id}/progress`,
+          new Blob([payload], { type: 'application/json' })
+        );
       }
     };
-  }, []);
+    window.addEventListener('beforeunload', handleUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleUnload);
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    };
+  }, [book.id, viewMode, readingDirection]);
 
   // Webtoon Scroll handler: calculates active page based on viewport offset
   useEffect(() => {

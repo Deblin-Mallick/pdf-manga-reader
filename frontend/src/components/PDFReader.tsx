@@ -118,15 +118,24 @@ function PDFPageCanvas({
 
 // ─── Main component ─────────────────────────────────────────────────────────
 export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDFReaderProps) {
+  const localKey = `reader_prefs_${book.id}`;
+  const savedPrefs = (() => { try { return JSON.parse(localStorage.getItem(localKey) || '{}'); } catch { return {}; } })();
+
   const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [currentPage, setCurrentPage] = useState(book.current_page || 1);
   const [totalPages, setTotalPages] = useState(book.total_pages || 1);
   const [zoom, setZoom] = useState(book.zoom || 1.0);
   const [viewMode, setViewMode] = useState<string>(book.view_mode || 'fit-width');
-  const [isInverted, setIsInverted] = useState(false);
+  const [isInverted, setIsInverted] = useState<boolean>(savedPrefs.isInverted ?? false);
   const [loading, setLoading] = useState(true);
-  const [scrollMode, setScrollMode] = useState(false);
+  const [scrollMode, setScrollMode] = useState<boolean>(savedPrefs.scrollMode ?? false);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+
+  // Persist ephemeral prefs to localStorage whenever they change
+  useEffect(() => {
+    const prefs = { isInverted, scrollMode };
+    localStorage.setItem(localKey, JSON.stringify(prefs));
+  }, [isInverted, scrollMode, localKey]);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -134,14 +143,21 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
   // True while a programmatic scroll is in flight — suppresses IntersectionObserver feedback
   const isProgrammaticScrollRef = useRef(false);
 
+  // Refs for pending progress flush on page unload
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingProgressRef = useRef<{
+    page: number; zoom: number; mode: string; scroll: number;
+  } | null>(null);
 
   // Debounced Sync Progress to prevent database contention over NFS
   const debouncedSyncProgress = useCallback((page: number, currentZoom: number, currentMode: string, scrollPos: number) => {
+    // Always store the latest values so beforeunload can flush them
+    pendingProgressRef.current = { page, zoom: currentZoom, mode: currentMode, scroll: scrollPos };
     if (syncTimeoutRef.current) {
       clearTimeout(syncTimeoutRef.current);
     }
     syncTimeoutRef.current = setTimeout(() => {
+      pendingProgressRef.current = null;
       onUpdateProgress(book.id, {
         current_page: page,
         zoom: currentZoom,
@@ -152,14 +168,29 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
     }, 1000); // 1-second debounce to protect SQLite database from locking over NFS
   }, [book.id, onUpdateProgress]);
 
-  // Clean up timer on unmount
+  // Clean up timer on unmount + flush pending progress immediately before page unloads
   useEffect(() => {
-    return () => {
-      if (syncTimeoutRef.current) {
-        clearTimeout(syncTimeoutRef.current);
+    const handleUnload = () => {
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+      const p = pendingProgressRef.current;
+      if (p) {
+        // Use navigator.sendBeacon for a fire-and-forget flush on page close
+        const payload = JSON.stringify({
+          current_page: p.page, zoom: p.zoom, view_mode: p.mode,
+          scroll_position: p.scroll, reading_direction: 'ltr',
+        });
+        navigator.sendBeacon(
+          `/api/books/${book.id}/progress`,
+          new Blob([payload], { type: 'application/json' })
+        );
       }
     };
-  }, []);
+    window.addEventListener('beforeunload', handleUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleUnload);
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    };
+  }, [book.id]);
 
   // ── Load PDF ──────────────────────────────────────────────────────────────
   const onBackRef = useRef(onBack);

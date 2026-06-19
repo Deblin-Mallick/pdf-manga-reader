@@ -134,6 +134,33 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
   // True while a programmatic scroll is in flight — suppresses IntersectionObserver feedback
   const isProgrammaticScrollRef = useRef(false);
 
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Debounced Sync Progress to prevent database contention over NFS
+  const debouncedSyncProgress = useCallback((page: number, currentZoom: number, currentMode: string, scrollPos: number) => {
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current);
+    }
+    syncTimeoutRef.current = setTimeout(() => {
+      onUpdateProgress(book.id, {
+        current_page: page,
+        zoom: currentZoom,
+        view_mode: currentMode,
+        scroll_position: scrollPos,
+        reading_direction: 'ltr',
+      });
+    }, 1000); // 1-second debounce to protect SQLite database from locking over NFS
+  }, [book.id, onUpdateProgress]);
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+      }
+    };
+  }, []);
+
   // ── Load PDF ──────────────────────────────────────────────────────────────
   useEffect(() => {
     let isMounted = true;
@@ -208,17 +235,11 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
 
   useEffect(() => { renderPage(); }, [renderPage]);
 
-  // ── Sync progress ─────────────────────────────────────────────────────────
+  // ── Sync progress (Debounced) ─────────────────────────────────────────────
   useEffect(() => {
     if (!pdf) return;
-    onUpdateProgress(book.id, {
-      current_page: currentPage,
-      zoom,
-      view_mode: viewMode,
-      scroll_position: containerRef.current?.scrollTop || 0,
-      reading_direction: 'ltr',
-    });
-  }, [currentPage, zoom, viewMode]);
+    debouncedSyncProgress(currentPage, zoom, viewMode, containerRef.current?.scrollTop || 0);
+  }, [currentPage, zoom, viewMode, pdf, debouncedSyncProgress]);
 
   // ── Resize handler ────────────────────────────────────────────────────────
   useEffect(() => {

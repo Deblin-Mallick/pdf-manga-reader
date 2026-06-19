@@ -37,7 +37,9 @@ export interface User {
 }
 
 export default function App() {
-  const [token, setToken] = useState<string | null>(localStorage.getItem('reader_jwt'));
+  const [token, setToken] = useState<string | null>(
+    localStorage.getItem('reader_jwt') || sessionStorage.getItem('reader_guest_id')
+  );
   const [user, setUser] = useState<User | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
   const [currentBook, setCurrentBook] = useState<Book | null>(null);
@@ -84,33 +86,34 @@ export default function App() {
   // Fetch current profile and books
   const fetchUserData = useCallback(async () => {
     if (!token) {
-      const isGuest = localStorage.getItem('reader_guest_mode') === 'true';
-      if (!isGuest) {
-        setUser(null);
-        return;
-      }
-      
-      // In guest mode
+      setUser(null);
+      setBooks([]);
+      return;
+    }
+
+    if (token.startsWith('guest_')) {
       setUser({
-        id: 'guest',
+        id: token,
         name: 'Guest Reader',
         email: 'guest@local.dev',
         picture: '',
       });
+      setIsLoading(true);
       try {
-        const res = await fetch('/api/books');
-        if (res.ok) {
-          const data: Book[] = await res.json();
-          setBooks(data);
-          // Restore open book for guest users too
+        const booksRes = await apiFetch('/api/books');
+        if (booksRes.ok) {
+          const booksData: Book[] = await booksRes.json();
+          setBooks(booksData);
           if (pendingBookIdRef.current) {
-            const restored = data.find((b) => b.id === pendingBookIdRef.current);
+            const restored = booksData.find((b) => b.id === pendingBookIdRef.current);
             if (restored) setCurrentBook(restored);
             pendingBookIdRef.current = null;
           }
         }
       } catch (err) {
         console.error('Failed to fetch guest books:', err);
+      } finally {
+        setIsLoading(false);
       }
       return;
     }
@@ -163,6 +166,7 @@ export default function App() {
       const data = await res.json();
       localStorage.setItem('reader_jwt', data.token);
       localStorage.removeItem('reader_guest_mode');
+      sessionStorage.removeItem('reader_guest_id');
       setToken(data.token);
       setUser(data.user);
       
@@ -211,7 +215,7 @@ export default function App() {
 
   // Re-initialize Google Login button in the header if Guest mode is active
   useEffect(() => {
-    if (user?.id === 'guest' && googleClientId) {
+    if (user?.id?.startsWith('guest_') && googleClientId) {
       const timer = setTimeout(() => {
         initGoogleLogin();
       }, 100);
@@ -219,10 +223,25 @@ export default function App() {
     }
   }, [user, googleClientId, initGoogleLogin]);
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
+    try {
+      if (token) {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+      }
+    } catch (err) {
+      console.error('Failed to log out guest session on backend:', err);
+    }
+
     localStorage.removeItem('reader_jwt');
-    localStorage.setItem('reader_guest_mode', 'true');
-    setToken(null);
+    
+    // Generate a fresh unique guest ID to shift the user to a clean Guest Shelf
+    const guestId = 'guest_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    sessionStorage.setItem('reader_guest_id', guestId);
+    
+    setToken(guestId);
     setCurrentBook(null);
   };
 
@@ -314,8 +333,9 @@ export default function App() {
           googleClientId={googleClientId}
           onInitGoogleAuth={initGoogleLogin}
           onContinueAsGuest={() => {
-            localStorage.setItem('reader_guest_mode', 'true');
-            fetchUserData();
+            const guestId = 'guest_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+            sessionStorage.setItem('reader_guest_id', guestId);
+            setToken(guestId);
           }}
         />
       </div>
@@ -347,7 +367,7 @@ export default function App() {
               <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 500 }} className="desktop-only">
                 {user.name}
               </span>
-              {user.id !== 'guest' ? (
+              {!user.id.startsWith('guest_') ? (
                 <button onClick={handleSignOut} className="btn-secondary" style={{ padding: '8px 12px' }} title="Log Out">
                   <LogOut size={16} />
                 </button>

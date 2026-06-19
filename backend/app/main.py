@@ -20,10 +20,46 @@ COVERS_DIR = os.path.join(BASE_DIR, "covers")
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 os.makedirs(COVERS_DIR, exist_ok=True)
 
+import datetime
+
+def cleanup_expired_guests():
+    try:
+        # Expire guest sessions older than 12 hours of inactivity
+        threshold = datetime.datetime.utcnow() - datetime.timedelta(hours=12)
+        with get_db() as conn:
+            # 1. Fetch books to delete from disk
+            books = conn.execute("""
+                SELECT id, file_path, cover_path FROM books 
+                WHERE user_id LIKE 'guest_%' AND last_read_at < ?;
+            """, (threshold,)).fetchall()
+            
+            deleted_count = 0
+            for book in books:
+                file_path = os.path.join(UPLOADS_DIR, book["file_path"])
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    deleted_count += 1
+                if book["cover_path"]:
+                    cover_filename = os.path.basename(book["cover_path"])
+                    cover_path = os.path.join(COVERS_DIR, cover_filename)
+                    if os.path.exists(cover_path):
+                        os.remove(cover_path)
+            
+            # 2. Purge DB records
+            conn.execute("DELETE FROM books WHERE user_id LIKE 'guest_%' AND last_read_at < ?;", (threshold,))
+            conn.execute("DELETE FROM users WHERE id LIKE 'guest_%' AND created_at < ?;", (threshold,))
+            
+            if deleted_count > 0:
+                print(f"Database Cleanup: Purged {deleted_count} expired guest files.")
+    except Exception as e:
+        print(f"Database Cleanup Error: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize SQLite database
     init_db()
+    # Cleanup expired guest folders
+    cleanup_expired_guests()
     yield
 
 app = FastAPI(
@@ -125,6 +161,40 @@ async def get_me(user_id: str = Depends(get_current_user_id)):
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         return user
+
+@app.post("/api/auth/logout")
+async def logout(user_id: str = Depends(get_current_user_id)):
+    """
+    Deletes the guest session data and uploaded files immediately when logging out.
+    """
+    if user_id.startswith("guest_"):
+        try:
+            with get_db() as conn:
+                # 1. Find and delete files
+                books = conn.execute(
+                    "SELECT id, file_path, cover_path FROM books WHERE user_id = ?;", 
+                    (user_id,)
+                ).fetchall()
+                
+                for book in books:
+                    file_path = os.path.join(UPLOADS_DIR, book["file_path"])
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                    if book["cover_path"]:
+                        cover_filename = os.path.basename(book["cover_path"])
+                        cover_path = os.path.join(COVERS_DIR, cover_filename)
+                        if os.path.exists(cover_path):
+                            os.remove(cover_path)
+                
+                # 2. Delete database entries
+                conn.execute("DELETE FROM books WHERE user_id = ?;", (user_id,))
+                conn.execute("DELETE FROM users WHERE id = ?;", (user_id,))
+                
+            return {"status": "success", "message": "Guest session data purged successfully"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to clear guest session: {str(e)}")
+            
+    return {"status": "success", "message": "Logged out successfully"}
 
 @app.get("/api/books")
 async def get_books(user_id: str = Depends(get_current_user_id)):

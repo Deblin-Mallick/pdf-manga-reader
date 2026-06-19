@@ -117,10 +117,22 @@ def get_current_user_id(authorization: Optional[str] = Header(None)) -> str:
             return "guest"
             
         token = parts[1]
+        if token.startswith("guest_"):
+            # Ensure guest user exists in DB to prevent foreign key violations on books table
+            from app.db import get_db
+            try:
+                with get_db() as conn:
+                    conn.execute("""
+                        INSERT INTO users (id, email, name, picture)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(id) DO NOTHING;
+                    """, (token, "guest@local.dev", "Guest Reader", ""))
+            except Exception as db_err:
+                print(f"Error ensuring guest user exists in database: {db_err}")
+            return token
+            
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         return payload["sub"]
     except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
         # We don't crash, we fall back to guest or raise an error depending on strictness.
-        # Let's return "guest" so the app works even with expired tokens, or we can raise an auth error.
-        # Returning "guest" ensures maximum tolerance and seamless usability locally.
         return "guest"

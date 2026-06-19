@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Trash2, Book, FileText, Search, Play, Plus, BookOpen, RefreshCw } from 'lucide-react';
+import { Upload, Trash2, Book, FileText, Search, Play, Plus, BookOpen, RefreshCw, Sparkles, X } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import JSZip from 'jszip';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -36,7 +36,20 @@ export default function Dashboard({
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'pdf' | 'cbz' | 'completed'>('all');
   const [convertToEpub, setConvertToEpub] = useState(false);
+  const [showNudge, setShowNudge] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Show "Save your library" nudge for guests who have uploaded at least 1 book
+  const isGuest = user?.id?.startsWith('guest_');
+  useEffect(() => {
+    if (isGuest && books.length > 0 && !sessionStorage.getItem('nudge_dismissed')) {
+      setShowNudge(true);
+      // Re-render Google button into nudge slot once it's in the DOM
+      setTimeout(() => onInitGoogleAuth(), 150);
+    } else if (!isGuest) {
+      setShowNudge(false);
+    }
+  }, [isGuest, books.length, onInitGoogleAuth]);
 
   // Trigger Google Login Button rendering if not logged in
   useEffect(() => {
@@ -307,6 +320,61 @@ export default function Dashboard({
           </>
         )}
       </section>
+
+      {/* Save Your Library Nudge Banner (guests with books only) */}
+      <AnimatePresence>
+        {showNudge && (
+          <motion.div
+            initial={{ opacity: 0, y: -12, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -12, scale: 0.98 }}
+            transition={{ duration: 0.3, ease: 'easeOut' }}
+            className="relative overflow-hidden rounded-2xl px-6 py-4 flex items-center gap-4"
+            style={{
+              background: 'linear-gradient(135deg, rgba(139,92,246,0.25) 0%, rgba(59,130,246,0.2) 100%)',
+              border: '1px solid rgba(139,92,246,0.35)',
+              boxShadow: '0 0 30px rgba(139,92,246,0.12)'
+            }}
+          >
+            {/* Decorative glow blob */}
+            <div style={{
+              position: 'absolute', right: '-40px', top: '-40px',
+              width: '160px', height: '160px',
+              background: 'radial-gradient(circle, rgba(139,92,246,0.3) 0%, transparent 70%)',
+              pointerEvents: 'none'
+            }} />
+
+            <div className="p-2.5 rounded-xl flex-shrink-0" style={{ background: 'rgba(139,92,246,0.2)' }}>
+              <Sparkles size={22} className="text-[var(--accent-primary)]" />
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-white leading-tight">
+                Your books are saved for 7 days — sign in to keep them forever!
+              </p>
+              <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                Create a free account and your entire library will be transferred automatically.
+              </p>
+            </div>
+
+            <div className="flex-shrink-0 flex items-center gap-3">
+              {googleClientId && (
+                <div id="google-signin-btn-nudge" className="inline-block" />
+              )}
+              <button
+                onClick={() => {
+                  sessionStorage.setItem('nudge_dismissed', '1');
+                  setShowNudge(false);
+                }}
+                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-white transition-colors"
+                title="Dismiss"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Catalog Filters and Search */}
       <section className="flex flex-col gap-5">

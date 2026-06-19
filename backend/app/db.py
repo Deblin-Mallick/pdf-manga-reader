@@ -22,6 +22,11 @@ class PgCursor:
     def __init__(self, pg_cursor):
         self.cursor = pg_cursor
 
+    @property
+    def rowcount(self):
+        """Delegate to the underlying psycopg2 cursor's rowcount."""
+        return self.cursor.rowcount
+
     def execute(self, query, params=None):
         # Translate SQL standard query parameters for PostgreSQL
         adapted_query = query.replace('?', '%s')

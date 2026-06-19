@@ -1,8 +1,53 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { LogOut, BookOpen } from 'lucide-react';
 import { Routes, Route, Navigate, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
+
+// ---------------------------------------------------------------------------
+// Guest session helpers – 20-minute localStorage-backed expiry
+// ---------------------------------------------------------------------------
+const GUEST_SESSION_KEY = 'reader_guest_session';
+const GUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+interface GuestSession {
+  id: string;
+  expiry: number; // unix ms
+}
+
+function loadGuestSession(): string | null {
+  try {
+    const raw = localStorage.getItem(GUEST_SESSION_KEY);
+    if (!raw) return null;
+    const session: GuestSession = JSON.parse(raw);
+    if (Date.now() > session.expiry) {
+      localStorage.removeItem(GUEST_SESSION_KEY);
+      return null;
+    }
+    return session.id;
+  } catch {
+    return null;
+  }
+}
+
+function saveGuestSession(id: string): void {
+  const session: GuestSession = { id, expiry: Date.now() + GUEST_TTL_MS };
+  localStorage.setItem(GUEST_SESSION_KEY, JSON.stringify(session));
+}
+
+function renewGuestSession(id: string): void {
+  // Only renew if the session actually belongs to the current guest
+  try {
+    const raw = localStorage.getItem(GUEST_SESSION_KEY);
+    if (!raw) return;
+    const session: GuestSession = JSON.parse(raw);
+    if (session.id === id) saveGuestSession(id);
+  } catch { /* ignore */ }
+}
+
+function clearGuestSession(): void {
+  localStorage.removeItem(GUEST_SESSION_KEY);
+}
 import Dashboard from './components/Dashboard';
 import Welcome from './components/Welcome';
 import PDFReader from './components/PDFReader';
@@ -51,7 +96,7 @@ export default function App() {
   const queryClient = useQueryClient();
 
   const [token, setToken] = useState<string | null>(
-    localStorage.getItem('reader_jwt') || sessionStorage.getItem('reader_guest_id')
+    () => localStorage.getItem('reader_jwt') || loadGuestSession()
   );
 
   // Fetch Google Client ID config from backend on mount
@@ -71,13 +116,14 @@ export default function App() {
 
   const googleClientId = authConfig?.google_client_id || localStorage.getItem('google_client_id') || '';
 
-  // Handle Google Token Callback
+  // Handle Google Token Callback — also sends current guest_id so backend can merge books
   const loginMutation = useMutation({
     mutationFn: async (response: any) => {
+      const guestId = token?.startsWith('guest_') ? token : undefined;
       const res = await fetch('/api/auth/google', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id_token: response.credential }),
+        body: JSON.stringify({ id_token: response.credential, guest_id: guestId }),
       });
       
       if (!res.ok) {
@@ -88,11 +134,14 @@ export default function App() {
     },
     onSuccess: (data) => {
       localStorage.setItem('reader_jwt', data.token);
-      localStorage.removeItem('reader_guest_mode');
-      sessionStorage.removeItem('reader_guest_id');
+      clearGuestSession();
       setToken(data.token);
       queryClient.setQueryData(['user', data.token], data.user);
       queryClient.invalidateQueries({ queryKey: ['books', data.token] });
+      if (data.merged_books > 0) {
+        // Brief toast: books were merged from guest shelf
+        setTimeout(() => alert(`✅ ${data.merged_books} book${data.merged_books > 1 ? 's' : ''} from your guest library have been saved to your account!`), 300);
+      }
       navigate('/');
     },
     onError: (err) => {
@@ -104,7 +153,7 @@ export default function App() {
     loginMutation.mutate(response);
   }, [loginMutation]);
 
-  // Initialize Google Login Sign-In Button
+  // Initialize Google Login Sign-In Button (renders into header slot + nudge banner slot)
   const initGoogleLogin = useCallback(() => {
     if (window.google && googleClientId) {
       try {
@@ -120,6 +169,17 @@ export default function App() {
             theme: 'filled_dark',
             size: 'large',
             shape: 'pill',
+          });
+        }
+
+        // Also populate the nudge banner button if it's visible
+        const nudgeBtnDiv = document.getElementById('google-signin-btn-nudge');
+        if (nudgeBtnDiv) {
+          window.google.accounts.id.renderButton(nudgeBtnDiv, {
+            theme: 'filled_dark',
+            size: 'medium',
+            shape: 'pill',
+            text: 'signin_with',
           });
         }
       } catch (err) {
@@ -177,6 +237,27 @@ export default function App() {
     enabled: !!token,
   });
 
+  // Renew guest expiry on activity so an active reader never gets kicked out
+  const renewalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleActivity = useCallback(() => {
+    if (token?.startsWith('guest_')) {
+      if (renewalRef.current) clearTimeout(renewalRef.current);
+      // Debounce renewals to avoid hammering localStorage
+      renewalRef.current = setTimeout(() => renewGuestSession(token), 2000);
+    }
+  }, [token]);
+
+  // Attach a single activity listener for guest sessions
+  useEffect(() => {
+    if (!token?.startsWith('guest_')) return;
+    window.addEventListener('pointerdown', handleActivity);
+    window.addEventListener('keydown', handleActivity);
+    return () => {
+      window.removeEventListener('pointerdown', handleActivity);
+      window.removeEventListener('keydown', handleActivity);
+    };
+  }, [token, handleActivity]);
+
   // Logout mutation-like function
   const handleSignOut = async () => {
     try {
@@ -192,9 +273,9 @@ export default function App() {
 
     localStorage.removeItem('reader_jwt');
     
-    // Generate a fresh unique guest ID to shift the user to a clean Guest Shelf
+    // Generate a fresh unique guest ID – previous session data remains until it expires
     const guestId = 'guest_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-    sessionStorage.setItem('reader_guest_id', guestId);
+    saveGuestSession(guestId);
     
     setToken(guestId);
     queryClient.clear();
@@ -311,8 +392,11 @@ export default function App() {
                   googleClientId={googleClientId}
                   onInitGoogleAuth={initGoogleLogin}
                   onContinueAsGuest={() => {
-                    const guestId = 'guest_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-                    sessionStorage.setItem('reader_guest_id', guestId);
+                    const existingId = loadGuestSession();
+                    const guestId = existingId ?? (
+                      'guest_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
+                    );
+                    saveGuestSession(guestId);
                     setToken(guestId);
                     navigate('/');
                   }}

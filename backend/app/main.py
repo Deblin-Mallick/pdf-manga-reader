@@ -52,8 +52,8 @@ import datetime
 
 def cleanup_expired_guests():
     try:
-        # Expire guest sessions older than 12 hours of inactivity
-        threshold_dt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=12)
+        # Expire guest sessions older than 7 days of inactivity (matches frontend TTL)
+        threshold_dt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=7)
         from app.db import IS_POSTGRES
         if IS_POSTGRES:
             threshold = threshold_dt
@@ -161,6 +161,7 @@ app.mount("/covers", StaticFiles(directory=COVERS_DIR), name="covers")
 
 class GoogleLoginRequest(BaseModel):
     id_token: str
+    guest_id: Optional[str] = None  # current guest session to merge into the real account
 
 class ProgressUpdateRequest(BaseModel):
     current_page: int
@@ -173,13 +174,14 @@ class ProgressUpdateRequest(BaseModel):
 async def google_auth(req: GoogleLoginRequest):
     """
     Verifies a Google credential token, registers/gets user in SQLite, and returns a session JWT.
+    If guest_id is provided, all books belonging to that guest are reassigned to the real account.
     """
     try:
         user_info = verify_google_token(req.id_token)
         user_id = user_info["id"]
         
-        # Save or update user in SQLite
         with get_db() as conn:
+            # 1. Save or update user in SQLite
             conn.execute("""
                 INSERT INTO users (id, email, name, picture)
                 VALUES (?, ?, ?, ?)
@@ -188,12 +190,24 @@ async def google_auth(req: GoogleLoginRequest):
                     name=excluded.name,
                     picture=excluded.picture;
             """, (user_id, user_info["email"], user_info["name"], user_info["picture"]))
-            
-        # Create backend JWT session token
+
+            # 2. Merge guest books into the real account if a valid guest_id was supplied
+            merged_count = 0
+            if req.guest_id and req.guest_id.startswith("guest_"):
+                result = conn.execute(
+                    "UPDATE books SET user_id = ? WHERE user_id = ?;",
+                    (user_id, req.guest_id)
+                )
+                merged_count = result.rowcount
+                # Clean up the now-empty guest user record
+                conn.execute("DELETE FROM users WHERE id = ?;", (req.guest_id,))
+
+        # 3. Create backend JWT session token
         session_token = create_session_token(user_id)
-        
+
         return {
             "token": session_token,
+            "merged_books": merged_count,
             "user": {
                 "id": user_id,
                 "email": user_info["email"],

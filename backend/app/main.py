@@ -25,7 +25,14 @@ import datetime
 def cleanup_expired_guests():
     try:
         # Expire guest sessions older than 12 hours of inactivity
-        threshold = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=12)
+        threshold_dt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=12)
+        from app.db import IS_POSTGRES
+        if IS_POSTGRES:
+            threshold = threshold_dt
+        else:
+            # SQLite comparison relies on string matching format: YYYY-MM-DD HH:MM:SS
+            threshold = threshold_dt.strftime("%Y-%m-%d %H:%M:%S")
+            
         with get_db() as conn:
             # 1. Fetch books to delete from disk
             books = conn.execute("""

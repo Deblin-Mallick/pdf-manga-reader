@@ -223,6 +223,11 @@ export default function EPUBReader({
   }, [book.id]);
 
   // Load EPUB file and parse manifest/spine/TOC
+  const onBackRef = useRef(onBack);
+  useEffect(() => {
+    onBackRef.current = onBack;
+  }, [onBack]);
+
   useEffect(() => {
     let isMounted = true;
     const loadEpub = async () => {
@@ -379,7 +384,7 @@ export default function EPUBReader({
       } catch (err) {
         console.error('Error reading EPUB:', err);
         alert(err instanceof Error ? err.message : 'Failed to load EPUB archive.');
-        onBack();
+        onBackRef.current();
       }
     };
 
@@ -388,7 +393,7 @@ export default function EPUBReader({
     return () => {
       isMounted = false;
     };
-  }, [book.id, token, onBack]);
+  }, [book.id, token]);
 
   // Load and style active chapter/page
   const loadPageContent = useCallback(async () => {

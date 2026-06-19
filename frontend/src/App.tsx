@@ -444,11 +444,11 @@ function ReaderWrapper({ books, token, updateProgressMutation }: ReaderWrapperPr
     );
   }
 
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     navigate('/');
-  };
+  }, [navigate]);
 
-  const handleUpdateProgress = async (
+  const handleUpdateProgress = useCallback(async (
     bookId: string,
     progress: {
       current_page: number;
@@ -459,7 +459,7 @@ function ReaderWrapper({ books, token, updateProgressMutation }: ReaderWrapperPr
     }
   ) => {
     updateProgressMutation.mutate({ bookId, progress });
-  };
+  }, [updateProgressMutation]);
 
   if (book.type === 'pdf') {
     return (

@@ -162,6 +162,11 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
   }, []);
 
   // ── Load PDF ──────────────────────────────────────────────────────────────
+  const onBackRef = useRef(onBack);
+  useEffect(() => {
+    onBackRef.current = onBack;
+  }, [onBack]);
+
   useEffect(() => {
     let isMounted = true;
     const load = async () => {
@@ -177,12 +182,12 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
       } catch (err) {
         console.error(err);
         alert('Failed to load PDF file. Please try again.');
-        onBack();
+        onBackRef.current();
       }
     };
     load();
     return () => { isMounted = false; };
-  }, [book.id, token, onBack]);
+  }, [book.id, token]);
 
   // ── Measure container for scale calc ─────────────────────────────────────
   useEffect(() => {

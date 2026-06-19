@@ -59,6 +59,11 @@ export default function MangaReader({
   }, [book.id, token]);
 
   // Load manga manifest and media token on mount
+  const onBackRef = useRef(onBack);
+  useEffect(() => {
+    onBackRef.current = onBack;
+  }, [onBack]);
+
   useEffect(() => {
     let isMounted = true;
     
@@ -91,7 +96,7 @@ export default function MangaReader({
       } catch (err) {
         console.error('Error initializing manga reader:', err);
         alert(err instanceof Error ? err.message : 'Failed to initialize manga reader.');
-        onBack();
+        onBackRef.current();
       }
     };
     
@@ -108,7 +113,7 @@ export default function MangaReader({
       isMounted = false;
       clearInterval(interval);
     };
-  }, [book.id, token, fetchMediaToken, onBack]);
+  }, [book.id, token, fetchMediaToken]);
 
   // Get Page URL pointing to streaming media endpoint
   const getPageUrl = useCallback((index: number): string => {

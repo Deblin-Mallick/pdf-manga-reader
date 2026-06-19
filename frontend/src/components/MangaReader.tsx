@@ -132,16 +132,86 @@ export default function MangaReader({
     preload();
   }, [currentPage, zip, imageKeys, viewMode, cachedUrls, getPageUrl]);
 
-  // Sync Progress to Backend
-  const syncProgress = useCallback((page: number) => {
+  // Keep ref for scroll debouncing to avoid API locking on SQLite/NFS
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Sync Progress to Backend immediately (used for manual page turns)
+  const syncProgress = useCallback((page: number, scrollPos: number = 0) => {
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current);
+    }
     onUpdateProgress(book.id, {
       current_page: page,
       zoom: 1.0,
       view_mode: viewMode,
-      scroll_position: containerRef.current?.scrollTop || 0,
+      scroll_position: scrollPos,
       reading_direction: readingDirection,
     });
   }, [book.id, viewMode, readingDirection, onUpdateProgress]);
+
+  // Debounced Sync Progress for Webtoon scrolling
+  const debouncedSyncProgress = useCallback((page: number, scrollPos: number) => {
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current);
+    }
+    syncTimeoutRef.current = setTimeout(() => {
+      onUpdateProgress(book.id, {
+        current_page: page,
+        zoom: 1.0,
+        view_mode: viewMode,
+        scroll_position: scrollPos,
+        reading_direction: readingDirection,
+      });
+    }, 1000); // 1-second debounce to protect SQLite database from locking
+  }, [book.id, viewMode, readingDirection, onUpdateProgress]);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Webtoon Scroll handler: calculates active page based on viewport offset
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || viewMode !== 'webtoon') return;
+
+    const handleScroll = () => {
+      const images = container.querySelectorAll('img');
+      let activePage = 1;
+      let minDistance = Infinity;
+
+      images.forEach((img, idx) => {
+        const rect = img.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        
+        // Calculate which page top is closest to the top of scroll container
+        const distance = Math.abs(rect.top - containerRect.top);
+        if (distance < minDistance) {
+          minDistance = distance;
+          activePage = idx + 1;
+        }
+      });
+
+      if (activePage !== currentPage) {
+        setCurrentPage(activePage);
+        debouncedSyncProgress(activePage, container.scrollTop);
+      }
+    };
+
+    // Restore scroll position on initial load of Webtoon mode
+    if (book.scroll_position && book.scroll_position > 0) {
+      container.scrollTop = book.scroll_position;
+    }
+
+    container.addEventListener('scroll', handleScroll);
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+    };
+  }, [viewMode, currentPage, debouncedSyncProgress, book.scroll_position]);
 
   // Handle page flips
   const handleNext = useCallback(() => {
@@ -313,9 +383,9 @@ export default function MangaReader({
         style={{
           flex: 1,
           overflow: 'auto',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
+          display: viewMode === 'webtoon' ? 'block' : 'flex',
+          justifyContent: viewMode === 'webtoon' ? 'flex-start' : 'center',
+          alignItems: viewMode === 'webtoon' ? 'stretch' : 'center',
           padding: viewMode === 'webtoon' ? '0' : '20px',
           backgroundColor: '#050507',
           borderRadius: '16px',

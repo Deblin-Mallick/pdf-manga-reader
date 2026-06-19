@@ -97,6 +97,13 @@ def get_db():
         conn.row_factory = dict_factory
         conn.execute("PRAGMA foreign_keys = ON;")
         try:
+            conn.execute("PRAGMA journal_mode = WAL;")
+        except Exception:
+            pass
+        conn.execute("PRAGMA synchronous = NORMAL;")
+        conn.execute("PRAGMA busy_timeout = 5000;")
+        conn.execute("PRAGMA temp_store = MEMORY;")
+        try:
             yield conn
             conn.commit()
         except Exception as e:

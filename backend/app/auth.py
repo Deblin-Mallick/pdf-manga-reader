@@ -35,6 +35,9 @@ def load_env_file():
 
 load_env_file()
 
+from app.secrets import load_gcp_secrets
+load_gcp_secrets()
+
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "development")
 

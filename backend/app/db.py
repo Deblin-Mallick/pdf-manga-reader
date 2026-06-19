@@ -3,6 +3,9 @@ import os
 import time
 from contextlib import contextmanager
 
+from app.secrets import load_gcp_secrets
+load_gcp_secrets()
+
 # Read database URL (default fallback to SQLite)
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 

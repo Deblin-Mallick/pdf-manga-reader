@@ -24,7 +24,20 @@ def load_gcp_secrets():
 
     print(f"Initializing GCP Secret Manager Client for project: {project_id}...")
     try:
-        client = secretmanager.SecretManagerServiceClient()
+        gcp_key_json = os.environ.get("GCP_SERVICE_ACCOUNT_KEY_JSON")
+        if gcp_key_json:
+            import json
+            from google.oauth2 import service_account
+            try:
+                info = json.loads(gcp_key_json)
+                credentials = service_account.Credentials.from_service_account_info(info)
+                client = secretmanager.SecretManagerServiceClient(credentials=credentials)
+                print("GCP SECRETS: Authenticated using in-memory Service Account JSON Key.")
+            except Exception as auth_err:
+                print(f"GCP SECRETS ERROR: Failed to parse in-memory GCP_SERVICE_ACCOUNT_KEY_JSON: {auth_err}")
+                client = secretmanager.SecretManagerServiceClient()
+        else:
+            client = secretmanager.SecretManagerServiceClient()
         
         # We fetch these three standard secrets
         secrets_to_load = ["JWT_SECRET", "GOOGLE_CLIENT_ID", "DATABASE_URL"]

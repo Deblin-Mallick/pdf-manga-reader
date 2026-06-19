@@ -11,6 +11,9 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 IS_POSTGRES = DATABASE_URL.startswith("postgresql://") or DATABASE_URL.startswith("postgres://")
 
+psycopg2 = None
+RealDictCursor = None
+
 if IS_POSTGRES:
     import psycopg2
     from psycopg2.extras import RealDictCursor
@@ -77,7 +80,7 @@ def dict_factory(cursor, row):
 @contextmanager
 def get_db():
     if IS_POSTGRES:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = psycopg2.connect(DATABASE_URL)  # type: ignore
         wrapped_conn = PgConnection(conn)
         try:
             yield wrapped_conn

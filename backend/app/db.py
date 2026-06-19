@@ -18,55 +18,55 @@ if IS_POSTGRES:
     import psycopg2
     from psycopg2.extras import RealDictCursor
 
-    class PgCursor:
-        def __init__(self, pg_cursor):
-            self.cursor = pg_cursor
+class PgCursor:
+    def __init__(self, pg_cursor):
+        self.cursor = pg_cursor
 
-        def execute(self, query, params=None):
-            # Translate SQL standard query parameters for PostgreSQL
-            adapted_query = query.replace('?', '%s')
-            # Translate SQLite time function
-            adapted_query = adapted_query.replace("datetime('now')", "CURRENT_TIMESTAMP")
-            self.cursor.execute(adapted_query, params)
-            return self
+    def execute(self, query, params=None):
+        # Translate SQL standard query parameters for PostgreSQL
+        adapted_query = query.replace('?', '%s')
+        # Translate SQLite time function
+        adapted_query = adapted_query.replace("datetime('now')", "CURRENT_TIMESTAMP")
+        self.cursor.execute(adapted_query, params)
+        return self
 
-        def fetchone(self):
-            row = self.cursor.fetchone()
-            if row is not None:
-                return dict(row)
-            return None
-
-        def fetchall(self):
-            rows = self.cursor.fetchall()
-            return [dict(r) for r in rows]
-
-        def __iter__(self):
-            return self
-
-        def __next__(self):
-            row = self.cursor.fetchone()
-            if row is None:
-                raise StopIteration
+    def fetchone(self):
+        row = self.cursor.fetchone()
+        if row is not None:
             return dict(row)
+        return None
 
-    class PgConnection:
-        def __init__(self, pg_conn):
-            self.conn = pg_conn
+    def fetchall(self):
+        rows = self.cursor.fetchall()
+        return [dict(r) for r in rows]
 
-        def execute(self, query, params=None):
-            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
-            wrapped_cursor = PgCursor(cursor)
-            wrapped_cursor.execute(query, params)
-            return wrapped_cursor
+    def __iter__(self):
+        return self
 
-        def commit(self):
-            self.conn.commit()
+    def __next__(self):
+        row = self.cursor.fetchone()
+        if row is None:
+            raise StopIteration
+        return dict(row)
 
-        def rollback(self):
-            self.conn.rollback()
+class PgConnection:
+    def __init__(self, pg_conn):
+        self.conn = pg_conn
 
-        def close(self):
-            self.conn.close()
+    def execute(self, query, params=None):
+        cursor = self.conn.cursor(cursor_factory=RealDictCursor)
+        wrapped_cursor = PgCursor(cursor)
+        wrapped_cursor.execute(query, params)
+        return wrapped_cursor
+
+    def commit(self):
+        self.conn.commit()
+
+    def rollback(self):
+        self.conn.rollback()
+
+    def close(self):
+        self.conn.close()
 
 DB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 DB_PATH = os.path.join(DB_DIR, "reader.db")

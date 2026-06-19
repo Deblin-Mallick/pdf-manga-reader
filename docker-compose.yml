@@ -29,10 +29,12 @@ services:
     volumes:
       - uploads_data:/app/uploads
       - covers_data:/app/covers
+      - sqlite_data:/app/data
     restart: unless-stopped
 
 volumes:
   pgdata:
   uploads_data:
   covers_data:
+  sqlite_data:
 

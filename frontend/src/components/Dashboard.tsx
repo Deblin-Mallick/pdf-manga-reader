@@ -783,7 +783,7 @@ function GridBookCard({
       {/* Action buttons on hover */}
       <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 -mt-1 px-0.5">
         <IconButton
-          icon={<FeatherHeart className={isFavorite ? 'fill-red-500 text-red-500' : 'text-neutral-400'} size={13} />}
+          icon={<FeatherHeart className={isFavorite ? 'fill-red-500 text-red-500' : 'text-neutral-400'} />}
           aria-label={isFavorite ? `Unfavorite ${book.title}` : `Favorite ${book.title}`}
           onClick={onToggleFavorite}
         />
@@ -848,7 +848,7 @@ function ListBookCard({
       </div>
       <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
         <IconButton
-          icon={<FeatherHeart className={isFavorite ? 'fill-red-500 text-red-500' : 'text-neutral-400'} size={13} />}
+          icon={<FeatherHeart className={isFavorite ? 'fill-red-500 text-red-500' : 'text-neutral-400'} />}
           aria-label={isFavorite ? `Unfavorite ${book.title}` : `Favorite ${book.title}`}
           onClick={onToggleFavorite}
         />

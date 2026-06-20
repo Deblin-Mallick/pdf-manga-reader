@@ -10,6 +10,21 @@
     "concurrently": "^8.2.2"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/server-sequential-thinking": "^2025.12.18",
     "@subframe/core": "^1.155.0"
-  }
+  },
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Deblin-Mallick/pdf-manga-reader.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Deblin-Mallick/pdf-manga-reader/issues"
+  },
+  "homepage": "https://github.com/Deblin-Mallick/pdf-manga-reader#readme"
 }

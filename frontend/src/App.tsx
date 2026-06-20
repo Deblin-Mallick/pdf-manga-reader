@@ -271,14 +271,10 @@ export default function App() {
     }
 
     localStorage.removeItem('reader_jwt');
-    
-    // Generate a fresh unique guest ID – previous session data remains until it expires
-    const guestId = 'guest_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-    saveGuestSession(guestId);
-    
-    setToken(guestId);
+    clearGuestSession();
+    setToken(null);
     queryClient.clear();
-    navigate('/');
+    navigate('/welcome');
   };
 
   const handleBookUploadSuccess = (newBook: Book) => {
@@ -412,8 +408,8 @@ export default function App() {
   const isReader = location.pathname.startsWith('/book/');
 
   return (
-    <div className={isReader ? 'h-screen w-screen overflow-hidden' : (location.pathname === '/' ? 'min-h-screen' : 'app-container')}>
-      <main className={isReader ? 'h-full w-full flex flex-col p-0' : (location.pathname === '/' ? 'flex min-h-screen flex-col' : 'flex flex-1 flex-col px-4 pb-8')}>
+    <div className={isReader ? 'h-screen w-screen overflow-hidden' : 'app-container'}>
+      <main className={isReader ? 'h-full w-full flex flex-col p-0' : 'flex flex-1 flex-col'}>
         {isLoadingBooks || isLoadingUser ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-4">
             <div className="w-12 h-12 rounded-full border-4 border-[var(--border-glass)] border-t-[var(--accent-primary)] animate-spin" />
@@ -515,6 +511,7 @@ function ReaderWrapper({ books, user, token, updateProgressMutation }: ReaderWra
     return (
       <PDFReader
         book={book}
+        user={user}
         token={token}
         onBack={handleBack}
         onUpdateProgress={handleUpdateProgress}

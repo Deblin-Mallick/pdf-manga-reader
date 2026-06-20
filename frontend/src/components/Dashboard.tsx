@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import JSZip from 'jszip';
 import { RefreshCw, Trash2 } from 'lucide-react';
+import * as SubframeCore from '@subframe/core';
 import { Book as BookType, User } from '../App';
 import { Avatar } from '@/ui/components/Avatar';
 import { Badge } from '@/ui/components/Badge';
@@ -60,48 +61,81 @@ function formatRelativeDate(value: string) {
   if (Number.isNaN(date.getTime())) return 'Not read yet';
   const diff = Date.now() - date.getTime();
   const hours = Math.floor(diff / 3_600_000);
-  if (hours < 1) return 'Read just now';
-  if (hours < 24) return `Read ${hours} hour${hours === 1 ? '' : 's'} ago`;
+  if (hours < 1) return 'Just now';
+  if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
-  return `Read ${days} day${days === 1 ? '' : 's'} ago`;
+  return `${days}d ago`;
+}
+
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function typeColor(type: string) {
+  if (type === 'epub') return 'text-emerald-400 bg-emerald-400/10';
+  if (type === 'pdf') return 'text-blue-400 bg-blue-400/10';
+  return 'text-orange-400 bg-orange-400/10';
 }
 
 function Cover({ book, className }: { book: BookType; className: string }) {
   if (book.cover_path) {
     return (
-      <img 
-        className={`${className} border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.4)] transition-all duration-300 group-hover:scale-[1.03] group-hover:shadow-[0_12px_40px_0_rgba(139,92,246,0.15)] group-hover:border-purple-500/30`} 
-        src={book.cover_path} 
-        alt={`${book.title} cover`} 
+      <img
+        className={`${className} border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.4)] transition-all duration-300 group-hover:scale-[1.03] group-hover:shadow-[0_12px_40px_0_rgba(139,92,246,0.2)] group-hover:border-purple-500/40`}
+        src={book.cover_path}
+        alt={`${book.title} cover`}
       />
     );
   }
 
+  const colors: Record<string, string> = {
+    pdf: 'from-blue-950/60 via-neutral-950 to-blue-900/20',
+    epub: 'from-emerald-950/60 via-neutral-950 to-emerald-900/20',
+    cbz: 'from-orange-950/60 via-neutral-950 to-orange-900/20',
+    zip: 'from-orange-950/60 via-neutral-950 to-orange-900/20',
+  };
+  const iconColors: Record<string, string> = {
+    pdf: 'text-blue-400/70',
+    epub: 'text-emerald-400/70',
+    cbz: 'text-orange-400/70',
+    zip: 'text-orange-400/70',
+  };
+
   return (
-    <div className={`${className} flex items-center justify-center bg-gradient-to-br from-neutral-900 via-neutral-950 to-purple-950/20 border border-white/10 p-4 shadow-[0_8px_32px_0_rgba(0,0,0,0.4)] transition-all duration-300 group-hover:scale-[1.03] group-hover:shadow-[0_12px_40px_0_rgba(139,92,246,0.15)] group-hover:border-purple-500/30`}>
-      <FeatherBookOpen className="text-heading-1 font-heading-1 text-purple-400 opacity-80" />
+    <div
+      className={`${className} flex flex-col items-center justify-center gap-2 bg-gradient-to-br ${colors[book.type] || colors.pdf} border border-white/8 shadow-[0_8px_32px_0_rgba(0,0,0,0.4)] transition-all duration-300 group-hover:scale-[1.03] group-hover:shadow-[0_12px_40px_0_rgba(139,92,246,0.2)] group-hover:border-purple-500/30`}
+    >
+      <FeatherBookOpen className={`text-heading-1 font-heading-1 ${iconColors[book.type] || iconColors.pdf}`} />
+      <span className="text-[10px] font-bold uppercase tracking-widest text-white/20 px-2 text-center line-clamp-2">{book.title}</span>
     </div>
   );
 }
 
-function RailItem({ icon, label, active = false, badge }: {
+function RailItem({ icon, label, active = false, badge, onClick }: {
   icon: React.ReactNode;
   label: string;
   active?: boolean;
   badge?: number;
+  onClick?: () => void;
 }) {
   return (
     <button
       type="button"
       title={label}
       aria-label={label}
-      className={`relative flex w-10 items-center justify-center rounded-md px-2 py-2 ${
-        active ? 'bg-neutral-100 text-brand-600' : 'text-subtext-color hover:bg-neutral-100'
+      onClick={onClick}
+      className={`relative flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-200 ${
+        active
+          ? 'bg-purple-500/15 text-purple-400 border border-purple-500/25 shadow-[0_0_16px_rgba(139,92,246,0.25)]'
+          : 'text-neutral-500 hover:bg-white/5 hover:text-neutral-200'
       }`}
     >
       {icon}
       {badge ? (
-        <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-medium text-black">
+        <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-purple-500 px-1 text-[9px] font-bold text-white shadow-[0_0_8px_rgba(139,92,246,0.6)]">
           {badge}
         </span>
       ) : null}
@@ -129,25 +163,107 @@ export default function Dashboard({
   const [convertToEpub, setConvertToEpub] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const displayName = user?.name?.split(' ')[0] || 'Reader';
+
+  type TabMode = 'dashboard' | 'library' | 'in-progress' | 'completed' | 'favorites' | 'uploads';
+  const [activeTab, setActiveTab] = useState<TabMode>('dashboard');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const [favorites, setFavorites] = useState<Record<string, boolean>>(() => {
+    try {
+      const raw = localStorage.getItem('reader_favorites');
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const toggleFavorite = (bookId: string) => {
+    const newFavs = { ...favorites, [bookId]: !favorites[bookId] };
+    setFavorites(newFavs);
+    localStorage.setItem('reader_favorites', JSON.stringify(newFavs));
+  };
+
   const inProgress = useMemo(
     () => books.filter((book) => book.current_page > 0 && progressFor(book) < 100),
     [books],
   );
   const completed = useMemo(() => books.filter((book) => progressFor(book) >= 100), [books]);
-  const resumeBook = [...inProgress].sort(
-    (a, b) => new Date(b.last_read_at).getTime() - new Date(a.last_read_at).getTime(),
-  )[0];
+
+  const filteredBooks = useMemo(() => {
+    let list = books;
+    if (activeTab === 'in-progress') {
+      list = inProgress;
+    } else if (activeTab === 'completed') {
+      list = completed;
+    } else if (activeTab === 'favorites') {
+      list = books.filter((book) => favorites[book.id]);
+    }
+    return list;
+  }, [books, activeTab, inProgress, completed, favorites]);
 
   const visibleBooks = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    const filtered = books.filter((book) => book.title.toLowerCase().includes(query));
+    const filtered = filteredBooks.filter((book) => book.title.toLowerCase().includes(query));
     return [...filtered].sort((a, b) => {
       if (sortMode === 'title') return a.title.localeCompare(b.title);
       if (sortMode === 'progress') return progressFor(b) - progressFor(a);
       if (sortMode === 'added') return new Date(b.added_at).getTime() - new Date(a.added_at).getTime();
       return new Date(b.last_read_at).getTime() - new Date(a.last_read_at).getTime();
     });
-  }, [books, searchQuery, sortMode]);
+  }, [filteredBooks, searchQuery, sortMode]);
+
+  const resumeBook = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    const candidates = inProgress.filter(
+      (book) => !query || book.title.toLowerCase().includes(query)
+    );
+    return [...candidates].sort(
+      (a, b) => new Date(b.last_read_at).getTime() - new Date(a.last_read_at).getTime()
+    )[0];
+  }, [inProgress, searchQuery]);
+
+  const getGreetingDetails = () => {
+    if (activeTab === 'library') {
+      return {
+        title: 'Your Library',
+        desc: `You have ${books.length} ${books.length === 1 ? 'book' : 'books'} in your collection.`
+      };
+    }
+    if (activeTab === 'in-progress') {
+      return {
+        title: 'Continue Reading',
+        desc: `You have ${inProgress.length} ${inProgress.length === 1 ? 'book' : 'books'} in progress.`
+      };
+    }
+    if (activeTab === 'completed') {
+      return {
+        title: 'Completed Books',
+        desc: `You have read ${completed.length} ${completed.length === 1 ? 'book' : 'books'} completely!`
+      };
+    }
+    if (activeTab === 'favorites') {
+      return {
+        title: 'Your Favorites',
+        desc: `You have favorited ${books.filter((b) => favorites[b.id]).length} books.`
+      };
+    }
+    if (activeTab === 'uploads') {
+      return {
+        title: 'Upload Center',
+        desc: 'Add new books, manga archives, or EPUBs to your shelf.'
+      };
+    }
+    return {
+      title: `${getGreeting()}, ${displayName}`,
+      desc: inProgress.length === 0
+        ? 'Your library is all caught up. Ready to start something new?'
+        : `You have ${inProgress.length} ${inProgress.length === 1 ? 'book' : 'books'} in progress.`
+    };
+  };
+
+  const greetingDetails = getGreetingDetails();
+
 
   useEffect(() => {
     if (user?.id.startsWith('guest_') && googleClientId) {
@@ -251,29 +367,50 @@ export default function Dashboard({
     }
   };
 
-  const displayName = user?.name?.split(' ')[0] || 'Reader';
-
   return (
-    <div className="flex min-h-screen w-full items-start bg-neutral-0 text-default-font">
-      <aside className="sticky top-0 flex h-screen w-16 flex-none flex-col items-center gap-1 border-r border-neutral-border bg-neutral-0 py-4 mobile:hidden">
-        <div className="mb-2 flex w-full justify-center border-b border-neutral-border pb-4">
-          <FeatherBookOpen className="text-heading-2 font-heading-2 text-brand-600" />
+    <div className="flex min-h-screen w-full items-start bg-transparent text-default-font">
+      {/* Mobile Drawer Backdrop */}
+      {isMobileMenuOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm hidden mobile:block"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Left Rail Navigation */}
+      <aside
+        className={`sticky top-0 flex h-screen w-16 flex-none flex-col items-center gap-2 border-r border-white/[0.04] bg-[#09090e]/50 backdrop-blur-xl py-4 transition-all duration-300 z-40 ${
+          isMobileMenuOpen
+            ? 'mobile:flex mobile:fixed mobile:left-0 mobile:top-0 mobile:w-20 mobile:bg-[#09090e] mobile:shadow-[0_0_40px_rgba(0,0,0,0.8)]'
+            : 'mobile:hidden'
+        }`}
+      >
+        <div className="mb-3 flex w-full justify-center border-b border-white/[0.04] pb-4">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-purple-600/20 to-indigo-600/20 border border-purple-500/20 shadow-[0_0_12px_rgba(139,92,246,0.15)]">
+            <FeatherBookOpen className="text-lg text-purple-400" />
+          </div>
         </div>
-        <RailItem active icon={<FeatherLayout />} label="Dashboard" />
-        <RailItem icon={<FeatherBook />} label="Library" />
-        <RailItem icon={<FeatherBookOpen />} label="Continue Reading" badge={inProgress.length} />
-        <RailItem icon={<FeatherUploadCloud />} label="Uploads" />
-        <div className="mt-1 flex w-full flex-col items-center gap-1 border-t border-neutral-border pt-2">
-          <RailItem icon={<FeatherBookOpenCheck />} label="Completed" />
-          <RailItem icon={<FeatherHeart />} label="Favorites" />
-          <RailItem icon={<FeatherFiles />} label="All PDFs" />
+        <RailItem active={activeTab === 'dashboard'} icon={<FeatherLayout />} label="Dashboard" onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }} />
+        <RailItem active={activeTab === 'library'} icon={<FeatherBook />} label="Library" onClick={() => { setActiveTab('library'); setIsMobileMenuOpen(false); }} />
+        <RailItem active={activeTab === 'in-progress'} icon={<FeatherBookOpen />} label="Continue Reading" badge={inProgress.length} onClick={() => { setActiveTab('in-progress'); setIsMobileMenuOpen(false); }} />
+        <RailItem active={activeTab === 'uploads'} icon={<FeatherUploadCloud />} label="Uploads" onClick={() => { setActiveTab('uploads'); setIsMobileMenuOpen(false); }} />
+        <div className="mt-auto flex w-full flex-col items-center gap-2 border-t border-white/[0.04] pt-3">
+          <RailItem active={activeTab === 'completed'} icon={<FeatherBookOpenCheck />} label="Completed" onClick={() => { setActiveTab('completed'); setIsMobileMenuOpen(false); }} />
+          <RailItem active={activeTab === 'favorites'} icon={<FeatherHeart />} label="Favorites" onClick={() => { setActiveTab('favorites'); setIsMobileMenuOpen(false); }} />
+          <RailItem active={activeTab === 'library'} icon={<FeatherFiles />} label="All Files" onClick={() => { setActiveTab('library'); setIsMobileMenuOpen(false); }} />
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex w-full items-center gap-4 border-b border-neutral-border bg-neutral-0/95 px-6 py-3 backdrop-blur mobile:px-4">
-          <IconButton className="hidden mobile:flex" icon={<FeatherMenu />} aria-label="Open navigation" />
-          <TextField className="h-auto max-w-[320px] flex-1 mobile:max-w-none" variant="filled" icon={<FeatherSearch />}>
+        {/* Topbar */}
+        <header className="sticky top-0 z-20 flex w-full items-center gap-4 border-b border-white/[0.04] bg-[#09090e]/70 px-6 py-3 backdrop-blur-xl mobile:px-4">
+          <IconButton
+            className="hidden mobile:flex"
+            icon={<FeatherMenu />}
+            aria-label="Open navigation"
+            onClick={() => setIsMobileMenuOpen(true)}
+          />
+          <TextField className="h-auto max-w-[300px] flex-1 mobile:max-w-none" variant="filled" icon={<FeatherSearch />}>
             <TextField.Input
               type="search"
               placeholder="Search books, manga, PDFs..."
@@ -290,7 +427,7 @@ export default function Dashboard({
               onValueChange={(value) => setSortMode(value as SortMode)}
             >
               <Select.Item value="recent">Recently Read</Select.Item>
-              <Select.Item value="title">Title A-Z</Select.Item>
+              <Select.Item value="title">Title A–Z</Select.Item>
               <Select.Item value="progress">Progress</Select.Item>
               <Select.Item value="added">Date Added</Select.Item>
             </Select>
@@ -303,22 +440,69 @@ export default function Dashboard({
               </div>
             </ToggleGroup>
             <Avatar size="small" image={user?.picture}>{displayName.slice(0, 1)}</Avatar>
-            <button type="button" title="Sign out" aria-label="Sign out" onClick={onSignOut} className="text-subtext-color hover:text-default-font">
+            <button type="button" title="Settings / Sign out" aria-label="Settings" onClick={onSignOut} className="text-neutral-500 hover:text-neutral-200 transition-colors">
               <FeatherSettings />
             </button>
-            <IconButton icon={<FeatherBell />} aria-label="Notifications" />
+
+            <SubframeCore.DropdownMenu.Root>
+              <SubframeCore.DropdownMenu.Trigger asChild>
+                <IconButton icon={<FeatherBell />} aria-label="Notifications" />
+              </SubframeCore.DropdownMenu.Trigger>
+              <SubframeCore.DropdownMenu.Portal>
+                <SubframeCore.DropdownMenu.Content
+                  side="bottom"
+                  align="end"
+                  sideOffset={6}
+                  asChild
+                >
+                  <div
+                    className="flex w-80 flex-none flex-col items-start gap-3 rounded-xl border border-solid p-4 shadow-lg bg-[#1e293b] border-[#334155] text-[#f8fafc]"
+                  >
+                    <span className="text-caption-bold font-caption-bold text-neutral-400">
+                      NOTIFICATIONS
+                    </span>
+                    <div className="flex h-px w-full flex-none bg-[#334155]" />
+                    <div className="flex flex-col gap-2 w-full">
+                      <div className="flex flex-col gap-1 rounded-md bg-[#0f172a] p-2.5">
+                        <span className="text-xs font-bold text-purple-400">Welcome to SleekReader!</span>
+                        <span className="text-[11px] text-neutral-300">Start uploading your PDFs, EPUBs, or ZIP manga files to curate your personalized library.</span>
+                      </div>
+                      <div className="flex flex-col gap-1 rounded-md bg-[#0f172a]/50 p-2.5">
+                        <span className="text-xs font-bold text-cyan-400">Tips & Shortcuts</span>
+                        <span className="text-[11px] text-neutral-300">Use arrow keys (←/→) to flip pages inside the reader, and customize font sizes using the settings panel.</span>
+                      </div>
+                    </div>
+                  </div>
+                </SubframeCore.DropdownMenu.Content>
+              </SubframeCore.DropdownMenu.Portal>
+            </SubframeCore.DropdownMenu.Root>
           </div>
         </header>
 
         <main className="flex w-full flex-col gap-10 px-8 py-8 mobile:gap-8 mobile:px-4 mobile:py-6">
+          {/* ─── Greeting ─── */}
           <section className="flex w-full items-center justify-between gap-4">
             <div className="flex flex-col gap-1">
-              <h1 className="text-heading-1 font-heading-1 mobile:text-heading-2 mobile:font-heading-2">Good evening, {displayName}</h1>
+              <h1 className="text-heading-1 font-heading-1 mobile:text-heading-2 mobile:font-heading-2">
+                {activeTab === 'dashboard' ? (
+                  <>
+                    {getGreeting()},{' '}
+                    <span className="bg-gradient-to-r from-purple-400 to-indigo-400 bg-clip-text text-transparent">{displayName}</span>
+                  </>
+                ) : (
+                  greetingDetails.title
+                )}
+              </h1>
               <p className="text-body font-body text-subtext-color">
-                You have {inProgress.length} {inProgress.length === 1 ? 'book' : 'books'} in progress. Pick up where you left off.
+                {greetingDetails.desc}
               </p>
             </div>
-            <Button className="mobile:hidden" variant="neutral-secondary" icon={<FeatherUploadCloud />} onClick={() => fileInputRef.current?.click()}>
+            <Button
+              className="mobile:hidden"
+              variant="neutral-secondary"
+              icon={<FeatherUploadCloud />}
+              onClick={() => fileInputRef.current?.click()}
+            >
               Upload File
             </Button>
             <input
@@ -330,102 +514,204 @@ export default function Dashboard({
             />
           </section>
 
-          {resumeBook ? (
+          {/* ─── Resume Hero Card ─── */}
+          {activeTab === 'dashboard' && resumeBook ? (
             <section className="flex w-full flex-col gap-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-heading-3 font-heading-3">Pick Up Where You Left Off</h2>
-                <Button variant="neutral-tertiary" size="small" iconRight={<FeatherArrowRight />}>All In Progress</Button>
+                <Button variant="neutral-tertiary" size="small" iconRight={<FeatherArrowRight />} onClick={() => setActiveTab('in-progress')}>All In Progress</Button>
               </div>
-              <div className="flex w-full items-start gap-6 rounded-lg border border-neutral-200 bg-neutral-50 px-6 py-6 mobile:flex-col mobile:px-4 mobile:py-4">
-                <Cover book={resumeBook} className="h-52 w-36 flex-none rounded-md object-cover shadow-md mobile:h-44 mobile:w-32" />
-                <div className="flex min-w-0 flex-1 flex-col gap-4 py-1">
-                  <div>
-                    <h3 className="text-heading-2 font-heading-2 mobile:text-heading-3 mobile:font-heading-3">{resumeBook.title}</h3>
-                    <p className="text-body font-body text-subtext-color">{resumeBook.type.toUpperCase()}</p>
+              <div
+                className="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-gradient-to-br from-[#13131e] to-[#0d0d16] shadow-[0_8px_40px_rgba(0,0,0,0.5)] hover:border-purple-500/20 transition-all duration-500 group"
+              >
+                {/* Background accent glow */}
+                <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-purple-600/10 blur-3xl" />
+                <div className="pointer-events-none absolute -bottom-8 -left-8 h-36 w-36 rounded-full bg-indigo-600/10 blur-2xl" />
+
+                <div className="relative flex w-full items-start gap-6 p-6 mobile:flex-col mobile:p-4">
+                  <div className="relative flex-none">
+                    <Cover
+                      book={resumeBook}
+                      className="h-52 w-36 rounded-xl object-cover shadow-[0_8px_24px_rgba(0,0,0,0.5)] mobile:h-44 mobile:w-32"
+                    />
+                    {/* Progress ring on cover corner */}
+                    <div className="absolute -bottom-2 -right-2 flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#09090e] bg-gradient-to-br from-purple-600 to-indigo-600 text-xs font-bold text-white shadow-[0_0_12px_rgba(139,92,246,0.5)]">
+                      {progressFor(resumeBook)}%
+                    </div>
                   </div>
-                  <div className="flex w-full max-w-[400px] flex-col gap-2">
-                    <div className="flex items-center gap-3">
+
+                  <div className="flex min-w-0 flex-1 flex-col gap-5 py-1">
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${typeColor(resumeBook.type)}`}>
+                          {resumeBook.type}
+                        </span>
+                      </div>
+                      <h3 className="text-xl font-bold text-white leading-tight tracking-tight mobile:text-lg line-clamp-2">
+                        {resumeBook.title}
+                      </h3>
+                    </div>
+
+                    {/* Progress bar section */}
+                    <div className="flex w-full max-w-sm flex-col gap-2">
+                      <div className="flex items-center justify-between text-xs font-medium">
+                        <span className="text-neutral-400">Reading progress</span>
+                        <span className="text-purple-300 font-bold">{progressFor(resumeBook)}%</span>
+                      </div>
                       <Progress value={progressFor(resumeBook)} />
-                      <span className="text-caption-bold font-caption-bold text-subtext-color">{progressFor(resumeBook)}%</span>
                     </div>
-                    <div className="flex flex-wrap items-center gap-4">
-                      <span className="flex items-center gap-1.5 text-caption font-caption text-subtext-color"><FeatherBookOpen /> Page {resumeBook.current_page} of {resumeBook.total_pages}</span>
-                      <span className="flex items-center gap-1.5 text-caption font-caption text-subtext-color"><FeatherClock /> {formatRelativeDate(resumeBook.last_read_at)}</span>
+
+                    {/* Meta info */}
+                    <div className="flex flex-wrap items-center gap-5">
+                      <span className="flex items-center gap-1.5 text-sm text-neutral-400">
+                        <FeatherBookOpen className="text-purple-400 text-base" />
+                        Page {resumeBook.current_page} of {resumeBook.total_pages}
+                      </span>
+                      <span className="flex items-center gap-1.5 text-sm text-neutral-400">
+                        <FeatherClock className="text-purple-400 text-base" />
+                        {formatRelativeDate(resumeBook.last_read_at)}
+                      </span>
                     </div>
+
+                    <Button
+                      className="self-start bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold border-0 shadow-[0_0_20px_rgba(139,92,246,0.35)] hover:shadow-[0_0_28px_rgba(139,92,246,0.5)] transition-all duration-300"
+                      icon={<FeatherPlay />}
+                      onClick={() => onSelectBook(resumeBook)}
+                    >
+                      Resume Reading
+                    </Button>
                   </div>
-                  <Button className="mt-1 self-start" icon={<FeatherPlay />} onClick={() => onSelectBook(resumeBook)}>Resume Reading</Button>
                 </div>
               </div>
             </section>
           ) : null}
 
-          <section className="grid w-full grid-cols-3 gap-4 mobile:grid-cols-1 mobile:gap-3">
-            <Metric label="Books in Progress" value={inProgress.length} detail={`of ${books.length} total`} />
-            <Metric label="Pages Read" value={books.reduce((sum, book) => sum + book.current_page, 0)} trend="Current library" />
-            <Metric label="Completed" value={completed.length} detail="books total" />
-          </section>
+          {/* ─── Stats Row ─── */}
+          {(activeTab === 'dashboard' || activeTab === 'uploads' || activeTab === 'library') && (
+            <section className="grid w-full grid-cols-3 gap-4 mobile:grid-cols-1 mobile:gap-3">
+              <Metric
+                label="In Progress"
+                value={inProgress.length}
+                detail={`of ${books.length} total`}
+                accentColor="from-purple-500/10 to-indigo-500/5"
+                dotColor="bg-purple-400"
+              />
+              <Metric
+                label="Pages Read"
+                value={books.reduce((sum, book) => sum + book.current_page, 0)}
+                trend="Current library"
+                accentColor="from-cyan-500/10 to-blue-500/5"
+                dotColor="bg-cyan-400"
+              />
+              <Metric
+                label="Completed"
+                value={completed.length}
+                detail="books total"
+                accentColor="from-emerald-500/10 to-teal-500/5"
+                dotColor="bg-emerald-400"
+              />
+            </section>
+          )}
 
-          <section className="flex w-full flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-heading-3 font-heading-3">Recently Read</h2>
-              <Button variant="neutral-tertiary" size="small" iconRight={<FeatherArrowRight />}>View All</Button>
-            </div>
-            {visibleBooks.length ? (
-              <div className={viewMode === 'grid' ? 'grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6' : 'flex flex-col gap-3'}>
-                {visibleBooks.map((book) => (
-                  <article
-                    key={book.id}
-                    className={viewMode === 'grid' ? 'group flex min-w-0 flex-col gap-3' : 'group flex items-center gap-4 rounded-lg border border-neutral-200 bg-neutral-50 p-3'}
-                  >
-                    <button type="button" className="relative text-left" onClick={() => onSelectBook(book)}>
-                      <Cover book={book} className={viewMode === 'grid' ? 'h-56 w-full rounded-md object-cover shadow-md mobile:h-48' : 'h-20 w-14 rounded-md object-cover shadow-sm'} />
-                      <Badge className="absolute bottom-2 right-2" variant={progressFor(book) >= 100 ? 'success' : 'neutral'}>{progressFor(book)}%</Badge>
-                    </button>
-                    <div className="min-w-0 flex-1">
-                      <button type="button" className="line-clamp-2 w-full text-left text-caption-bold font-caption-bold" onClick={() => onSelectBook(book)}>{book.title}</button>
-                      <p className="mt-1 truncate text-caption font-caption text-subtext-color">{book.type.toUpperCase()} · {book.current_page}/{book.total_pages} pages</p>
-                    </div>
-                    <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-                      {book.type === 'pdf' ? <IconButton icon={<RefreshCw size={14} />} aria-label={`Convert ${book.title} to EPUB`} onClick={() => onConvertBook(book.id)} /> : null}
-                      <IconButton icon={<Trash2 size={14} />} aria-label={`Delete ${book.title}`} onClick={() => onDeleteBook(book.id)} />
-                    </div>
-                  </article>
-                ))}
+          {/* ─── Books Shelf ─── */}
+          {activeTab !== 'uploads' && (
+            <section className="flex w-full flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-heading-3 font-heading-3">
+                  {activeTab === 'library' ? 'All Books' :
+                   activeTab === 'in-progress' ? 'In Progress' :
+                   activeTab === 'completed' ? 'Completed' :
+                   activeTab === 'favorites' ? 'Favorites' :
+                   'Recently Read'}
+                </h2>
+                {activeTab === 'dashboard' && (
+                  <Button variant="neutral-tertiary" size="small" iconRight={<FeatherArrowRight />} onClick={() => setActiveTab('library')}>View All</Button>
+                )}
               </div>
-            ) : (
-              <div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center">
-                <FeatherBookOpen className="text-heading-1 font-heading-1 text-neutral-400" />
-                <div>
-                  <h3 className="text-body-bold font-body-bold">{books.length ? 'No matching books' : 'Your library is empty'}</h3>
-                  <p className="text-caption font-caption text-subtext-color">{books.length ? 'Try a different search.' : 'Upload a PDF or manga archive to start reading.'}</p>
+              {visibleBooks.length ? (
+                <div
+                  className={
+                    viewMode === 'grid'
+                      ? 'grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6'
+                      : 'flex flex-col gap-3'
+                  }
+                >
+                  {visibleBooks.map((book) =>
+                    viewMode === 'grid' ? (
+                      <GridBookCard
+                        key={book.id}
+                        book={book}
+                        isFavorite={Boolean(favorites[book.id])}
+                        onToggleFavorite={() => toggleFavorite(book.id)}
+                        onSelect={() => onSelectBook(book)}
+                        onDelete={() => onDeleteBook(book.id)}
+                        onConvert={book.type === 'pdf' ? () => onConvertBook(book.id) : undefined}
+                      />
+                    ) : (
+                      <ListBookCard
+                        key={book.id}
+                        book={book}
+                        isFavorite={Boolean(favorites[book.id])}
+                        onToggleFavorite={() => toggleFavorite(book.id)}
+                        onSelect={() => onSelectBook(book)}
+                        onDelete={() => onDeleteBook(book.id)}
+                        onConvert={book.type === 'pdf' ? () => onConvertBook(book.id) : undefined}
+                      />
+                    )
+                  )}
                 </div>
-                {!books.length ? <Button icon={<FeatherUploadCloud />} onClick={() => fileInputRef.current?.click()}>Upload your first book</Button> : null}
+              ) : (
+                <EmptyState hasBooks={filteredBooks.length > 0} onUpload={() => fileInputRef.current?.click()} />
+              )}
+            </section>
+          )}
+
+          {/* ─── Upload Banner ─── */}
+          {(activeTab === 'dashboard' || activeTab === 'uploads') && (
+            <section className="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-gradient-to-r from-purple-950/15 via-[#13131e] to-indigo-950/15 px-6 py-5 mobile:flex-col mobile:items-start hover:border-purple-500/20 transition-all duration-300">
+              <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-indigo-600/8 blur-3xl" />
+              <div className="flex items-center justify-between gap-4 mobile:flex-col mobile:items-start">
+                <div>
+                  <h2 className="text-body-bold font-body-bold text-white">Add to Your Library</h2>
+                  <p className="text-caption font-caption text-neutral-400 mt-0.5">Supports PDF, CBZ, and ZIP manga archives.</p>
+                </div>
+                <div className="flex items-center gap-4 mobile:w-full mobile:flex-col mobile:items-stretch">
+                  <label className="flex items-center gap-2 text-caption font-caption text-neutral-400 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      className="accent-purple-500 rounded border-white/10"
+                      checked={convertToEpub}
+                      onChange={(event) => setConvertToEpub(event.target.checked)}
+                    />
+                    Convert PDF to EPUB
+                  </label>
+                  <Button
+                    icon={<FeatherUploadCloud />}
+                    loading={Boolean(uploadStatus)}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold border-0 shadow-[0_0_16px_rgba(139,92,246,0.25)]"
+                  >
+                    {uploadStatus || 'Upload File'}
+                  </Button>
+                </div>
               </div>
-            )}
-          </section>
+              {uploadStatus ? (
+                <Progress className="absolute left-0 bottom-0 w-full h-[3px]" value={uploadProgress} />
+              ) : null}
+            </section>
+          )}
 
-          <section className="relative flex w-full items-center justify-between gap-4 overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 px-5 py-4 mobile:flex-col mobile:items-start">
-            <div>
-              <h2 className="text-body-bold font-body-bold">New Uploads</h2>
-              <p className="text-caption font-caption text-subtext-color">Add PDF, CBZ, or ZIP files to your library.</p>
-            </div>
-            <div className="flex items-center gap-3 mobile:w-full mobile:flex-col mobile:items-stretch">
-              <label className="flex items-center gap-2 text-caption font-caption text-subtext-color">
-                <input type="checkbox" checked={convertToEpub} onChange={(event) => setConvertToEpub(event.target.checked)} />
-                Convert PDF uploads to EPUB
-              </label>
-              <Button icon={<FeatherUploadCloud />} loading={Boolean(uploadStatus)} onClick={() => fileInputRef.current?.click()}>
-                {uploadStatus || 'Upload'}
-              </Button>
-            </div>
-            {uploadStatus ? <Progress className="absolute left-0 bottom-0" value={uploadProgress} /> : null}
-          </section>
-
-          {user?.id.startsWith('guest_') && googleClientId ? (
-            <section className="flex items-center justify-between gap-4 rounded-lg border border-brand-200 bg-brand-50 px-5 py-4 mobile:flex-col mobile:items-start">
+          {/* ─── Google Sign-In Nudge ─── */}
+          {activeTab === 'dashboard' && user?.id.startsWith('guest_') && googleClientId ? (
+            <section className="flex items-center justify-between gap-4 rounded-2xl border border-purple-500/25 bg-gradient-to-r from-purple-600/8 to-indigo-600/8 px-6 py-5 mobile:flex-col mobile:items-start shadow-[0_0_24px_rgba(139,92,246,0.08)]">
               <div>
-                <h2 className="text-body-bold font-body-bold">Save your library permanently</h2>
-                <p className="text-caption font-caption text-subtext-color">Sign in and your guest library will transfer automatically.</p>
+                <h2 className="text-body-bold font-body-bold text-white flex items-center gap-2">
+                  <span className="flex h-2 w-2 rounded-full bg-purple-400 animate-pulse" />
+                  Save your library permanently
+                </h2>
+                <p className="text-caption font-caption text-neutral-400 mt-1">
+                  Sign in with Google and your guest library syncs automatically.
+                </p>
               </div>
               <div id="google-signin-btn-nudge" />
             </section>
@@ -436,14 +722,201 @@ export default function Dashboard({
   );
 }
 
-function Metric({ label, value, detail, trend }: { label: string; value: number; detail?: string; trend?: string }) {
+/* ─── Sub-components ──────────────────────────────────────────────── */
+
+function GridBookCard({
+  book,
+  isFavorite,
+  onToggleFavorite,
+  onSelect,
+  onDelete,
+  onConvert,
+}: {
+  book: BookType;
+  isFavorite: boolean;
+  onToggleFavorite: () => void;
+  onSelect: () => void;
+  onDelete: () => void;
+  onConvert?: () => void;
+}) {
+  const pct = progressFor(book);
   return (
-    <div className="flex flex-col gap-1 rounded-lg border border-neutral-200 bg-neutral-50 px-5 py-4">
-      <span className="text-caption font-caption text-subtext-color">{label}</span>
-      <div className="flex items-end gap-2">
-        <span className="text-heading-1 font-heading-1">{value}</span>
-        {trend ? <span className="flex items-center gap-1 pb-1 text-caption font-caption text-success-600"><FeatherTrendingUp /> {trend}</span> : null}
-        {detail ? <span className="pb-1 text-caption font-caption text-subtext-color">{detail}</span> : null}
+    <article className="group flex min-w-0 flex-col gap-3">
+      <button type="button" className="relative text-left" onClick={onSelect}>
+        <Cover
+          book={book}
+          className="h-56 w-full rounded-xl object-cover shadow-md mobile:h-48"
+        />
+        {/* Progress mini badge */}
+        <span
+          className={`absolute bottom-2 right-2 rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+            pct >= 100 ? 'bg-emerald-500/90 text-white' : 'bg-black/70 text-neutral-200'
+          }`}
+        >
+          {pct >= 100 ? '✓ Done' : `${pct}%`}
+        </span>
+      </button>
+      <div className="min-w-0 px-0.5">
+        <button
+          type="button"
+          className="line-clamp-2 w-full text-left text-body-bold font-body-bold text-white hover:text-purple-300 transition-colors text-sm leading-snug"
+          onClick={onSelect}
+        >
+          {book.title}
+        </button>
+        <div className="mt-1 flex items-center justify-between">
+          <p className="truncate text-caption font-caption text-neutral-500 text-xs">
+            {book.type.toUpperCase()} · {book.total_pages}p
+          </p>
+          <span className="text-[10px] text-neutral-500">{formatRelativeDate(book.last_read_at)}</span>
+        </div>
+        {/* Slim progress bar */}
+        {pct > 0 && pct < 100 && (
+          <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-white/5">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-700"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        )}
+      </div>
+      {/* Action buttons on hover */}
+      <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 -mt-1 px-0.5">
+        <IconButton
+          icon={<FeatherHeart className={isFavorite ? 'fill-red-500 text-red-500' : 'text-neutral-400'} size={13} />}
+          aria-label={isFavorite ? `Unfavorite ${book.title}` : `Favorite ${book.title}`}
+          onClick={onToggleFavorite}
+        />
+        {onConvert && (
+          <IconButton icon={<RefreshCw size={13} />} aria-label={`Convert ${book.title} to EPUB`} onClick={onConvert} />
+        )}
+        <IconButton icon={<Trash2 size={13} />} aria-label={`Delete ${book.title}`} onClick={onDelete} />
+      </div>
+    </article>
+  );
+}
+
+function ListBookCard({
+  book,
+  isFavorite,
+  onToggleFavorite,
+  onSelect,
+  onDelete,
+  onConvert,
+}: {
+  book: BookType;
+  isFavorite: boolean;
+  onToggleFavorite: () => void;
+  onSelect: () => void;
+  onDelete: () => void;
+  onConvert?: () => void;
+}) {
+  const pct = progressFor(book);
+  return (
+    <article className="group flex items-center gap-4 rounded-xl border border-white/[0.05] bg-[#12121a]/60 hover:bg-[#12121a]/90 hover:border-white/10 p-4 transition-all duration-300">
+      <button type="button" className="flex-none text-left" onClick={onSelect}>
+        <Cover book={book} className="h-20 w-14 rounded-lg object-cover shadow-sm" />
+      </button>
+      <div className="min-w-0 flex-1">
+        <button
+          type="button"
+          className="line-clamp-1 w-full text-left font-bold text-white hover:text-purple-300 transition-colors"
+          onClick={onSelect}
+        >
+          {book.title}
+        </button>
+        <div className="mt-0.5 flex items-center gap-3">
+          <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${typeColor(book.type)}`}>
+            {book.type}
+          </span>
+          <span className="text-xs text-neutral-500">
+            {book.current_page}/{book.total_pages} pages
+          </span>
+          <span className="text-xs text-neutral-600">{formatRelativeDate(book.last_read_at)}</span>
+        </div>
+        {pct > 0 && (
+          <div className="mt-2.5 flex items-center gap-2">
+            <div className="flex-1 h-1 overflow-hidden rounded-full bg-white/5">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-700"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <span className="text-[10px] font-bold text-neutral-500 w-7 text-right">{pct}%</span>
+          </div>
+        )}
+      </div>
+      <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <IconButton
+          icon={<FeatherHeart className={isFavorite ? 'fill-red-500 text-red-500' : 'text-neutral-400'} size={13} />}
+          aria-label={isFavorite ? `Unfavorite ${book.title}` : `Favorite ${book.title}`}
+          onClick={onToggleFavorite}
+        />
+        {onConvert && (
+          <IconButton icon={<RefreshCw size={13} />} aria-label={`Convert ${book.title} to EPUB`} onClick={onConvert} />
+        )}
+        <IconButton icon={<Trash2 size={13} />} aria-label={`Delete ${book.title}`} onClick={onDelete} />
+      </div>
+    </article>
+  );
+}
+
+function EmptyState({ hasBooks, onUpload }: { hasBooks: boolean; onUpload: () => void }) {
+  return (
+    <div className="flex min-h-52 flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-white/8 bg-[#12121a]/20 p-10 text-center">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-500/10 border border-purple-500/15">
+        <FeatherBookOpen className="text-2xl text-purple-400/80" />
+      </div>
+      <div>
+        <h3 className="text-body-bold font-body-bold text-white">{hasBooks ? 'No matching books' : 'Your library is empty'}</h3>
+        <p className="text-caption font-caption text-neutral-500 mt-1">
+          {hasBooks ? 'Try a different search term.' : 'Upload a PDF or manga archive to get started.'}
+        </p>
+      </div>
+      {!hasBooks ? (
+        <Button
+          icon={<FeatherUploadCloud />}
+          onClick={onUpload}
+          className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 border-none text-white shadow-[0_0_16px_rgba(139,92,246,0.3)]"
+        >
+          Upload your first book
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  detail,
+  trend,
+  accentColor,
+  dotColor,
+}: {
+  label: string;
+  value: number;
+  detail?: string;
+  trend?: string;
+  accentColor: string;
+  dotColor: string;
+}) {
+  return (
+    <div className={`relative overflow-hidden rounded-2xl border border-white/[0.06] bg-gradient-to-br ${accentColor} from-[#12121a]/80 p-5 shadow-[0_4px_24px_rgba(0,0,0,0.3)] hover:border-white/10 transition-all duration-300`}>
+      <div className="flex items-start justify-between">
+        <span className="text-caption font-caption text-neutral-500 uppercase tracking-wider">{label}</span>
+        <span className={`mt-1 h-2 w-2 rounded-full ${dotColor} opacity-80`} />
+      </div>
+      <div className="mt-3 flex items-end gap-2">
+        <span className="text-3xl font-bold bg-gradient-to-b from-white to-neutral-300 bg-clip-text text-transparent leading-none">
+          {value}
+        </span>
+        {trend ? (
+          <span className="flex items-center gap-1 pb-0.5 text-caption font-caption text-emerald-400">
+            <FeatherTrendingUp className="text-emerald-400" /> {trend}
+          </span>
+        ) : null}
+        {detail ? <span className="pb-0.5 text-caption font-caption text-neutral-500">{detail}</span> : null}
       </div>
     </div>
   );

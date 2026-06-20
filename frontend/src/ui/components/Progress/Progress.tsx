@@ -19,9 +19,10 @@ const Indicator = React.forwardRef<HTMLDivElement, IndicatorProps>(
       <SubframeCore.Progress.Indicator asChild={true} {...otherProps}>
         <div
           className={SubframeUtils.twClassNames(
-            "flex h-2 w-full flex-col items-start gap-2 rounded-full bg-brand-600",
+            "flex h-2 w-full flex-col items-start gap-2 rounded-full",
             className
           )}
+          style={{ background: 'linear-gradient(90deg, #7c3aed, #8b5cf6, #6366f1)' }}
           ref={ref}
         />
       </SubframeCore.Progress.Indicator>
@@ -44,9 +45,10 @@ const ProgressRoot = React.forwardRef<HTMLDivElement, ProgressRootProps>(
       <SubframeCore.Progress.Root asChild={true} value={value} {...otherProps}>
         <div
           className={SubframeUtils.twClassNames(
-            "flex w-full flex-col items-start gap-2 overflow-hidden rounded-full bg-neutral-100",
+            "flex h-2 w-full flex-col items-start gap-2 overflow-hidden rounded-full",
             className
           )}
+          style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}
           ref={ref}
         >
           <Indicator />

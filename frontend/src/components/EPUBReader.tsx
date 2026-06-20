@@ -731,6 +731,10 @@ export default function EPUBReader({
       className="flex h-full w-full items-start"
       style={{
         backgroundColor: activeTheme.bg,
+        backgroundImage: activeTheme.bg === '#09090e'
+          ? 'radial-gradient(at 0% 0%, rgba(139, 92, 246, 0.1) 0px, transparent 60%), radial-gradient(at 100% 100%, rgba(6, 182, 212, 0.08) 0px, transparent 60%)'
+          : 'none',
+        backgroundAttachment: 'fixed',
         color: activeTheme.text,
         transition: 'all 0.3s ease'
       }}

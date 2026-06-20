@@ -422,6 +422,10 @@ export default function MangaReader({
       className="flex h-full w-full items-start"
       style={{
         backgroundColor: activeTheme.bg,
+        backgroundImage: activeTheme.bg === '#09090e'
+          ? 'radial-gradient(at 0% 0%, rgba(139, 92, 246, 0.1) 0px, transparent 60%), radial-gradient(at 100% 100%, rgba(6, 182, 212, 0.08) 0px, transparent 60%)'
+          : 'none',
+        backgroundAttachment: 'fixed',
         color: activeTheme.text,
         transition: 'all 0.3s ease'
       }}
@@ -437,24 +441,30 @@ export default function MangaReader({
       {/* MAIN READING WORKSPACE */}
       <div className="flex grow shrink-0 basis-0 flex-col items-center self-stretch overflow-hidden h-full">
         {/* HEADER BAR */}
-        <div className="flex w-full items-center gap-3 border-b border-solid bg-neutral-0 px-4 py-2.5"
-             style={{
-               borderColor: activeTheme.border,
-               backgroundColor: activeTheme.cardBg
-             }}
+        <div
+          className="flex w-full items-center gap-3 border-b px-4 py-2.5"
+          style={{
+            borderColor: activeTheme.border,
+            backgroundColor: activeTheme.bg === '#09090e' ? 'rgba(9,9,14,0.85)' : activeTheme.cardBg,
+            backdropFilter: 'blur(16px)',
+          }}
         >
-          <IconButton
-            variant="neutral-tertiary"
-            icon={<FeatherArrowLeft />}
+          <button
+            type="button"
             onClick={onBack}
-          />
-          <div className="flex h-6 w-px flex-none flex-col items-start bg-neutral-border mobile:hidden" style={{ backgroundColor: activeTheme.border }} />
-          <div className="flex min-w-[0px] grow shrink-0 basis-0 flex-col items-start">
-            <span className="line-clamp-1 w-full text-body-bold font-body-bold text-default-font" style={{ color: activeTheme.heading }}>
+            className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-sm font-medium transition-all duration-200"
+            style={{ color: '#94a3b8', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+          >
+            <FeatherArrowLeft className="text-base" />
+            <span className="mobile:hidden">Back</span>
+          </button>
+          <div className="flex h-5 w-px flex-none" style={{ backgroundColor: activeTheme.border }} />
+          <div className="flex min-w-0 grow flex-col">
+            <span className="line-clamp-1 w-full font-semibold" style={{ color: activeTheme.heading, fontSize: '0.9rem' }}>
               {book.title}
             </span>
-            <span className="line-clamp-1 w-full text-caption font-caption text-subtext-color">
-              Manga Archive
+            <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: '#64748b' }}>
+              Manga · {pages.length} pages
             </span>
           </div>
 
@@ -605,8 +615,14 @@ export default function MangaReader({
           >
             {loading ? (
               <div className="flex flex-col items-center gap-4">
-                <div className="h-10 w-10 animate-spin rounded-full border-3 border-solid border-brand-200 border-t-brand-600" />
-                <p className="text-body font-body text-subtext-color">{loadingText}</p>
+                <div
+                  className="h-10 w-10 animate-spin rounded-full border-2 border-solid"
+                  style={{
+                    borderColor: 'rgba(139,92,246,0.2)',
+                    borderTopColor: '#8b5cf6',
+                  }}
+                />
+                <p className="text-sm" style={{ color: '#64748b' }}>{loadingText}</p>
               </div>
             ) : (
               renderPagesContent()
@@ -616,11 +632,13 @@ export default function MangaReader({
 
         {/* BOTTOM NAVIGATION / PROGRESS BAR */}
         {!loading && (
-          <div className="flex w-full flex-col items-center gap-2 border-t border-solid bg-neutral-0 px-6 py-3 mobile:px-4"
-               style={{
-                 borderColor: activeTheme.border,
-                 backgroundColor: activeTheme.cardBg
-               }}
+          <div
+            className="flex w-full flex-col items-center gap-2 border-t px-6 py-3 mobile:px-4"
+            style={{
+              borderColor: activeTheme.border,
+              backgroundColor: activeTheme.bg === '#09090e' ? 'rgba(9,9,14,0.85)' : activeTheme.cardBg,
+              backdropFilter: 'blur(16px)',
+            }}
           >
             <div className="flex w-full items-center gap-4 max-w-[680px]">
               <IconButton
@@ -631,11 +649,14 @@ export default function MangaReader({
               />
               <div className="flex grow shrink-0 basis-0 flex-col items-center gap-2">
                 <div className="flex w-full items-center justify-between">
-                  <span className="line-clamp-1 text-caption-bold font-caption-bold text-default-font" style={{ color: activeTheme.heading }}>
-                    Page {currentPage} of {pages.length} ({percentComplete}%)
+                  <span className="text-[12px] font-medium" style={{ color: '#64748b' }}>
+                    Page {currentPage} of {pages.length}
+                  </span>
+                  <span className="text-[12px] font-bold" style={{ color: '#a78bfa' }}>
+                    {percentComplete}%
                   </span>
                 </div>
-                <div 
+                <div
                   onClick={(e) => {
                     if (pages.length === 0) return;
                     const rect = e.currentTarget.getBoundingClientRect();
@@ -645,19 +666,26 @@ export default function MangaReader({
                     setCurrentPage(targetPage);
                     syncProgress(targetPage);
                   }}
-                  className="flex w-full items-center py-1 relative cursor-pointer"
+                  className="relative flex w-full cursor-pointer items-center py-1"
                 >
-                  <div className="flex h-0.5 grow shrink-0 basis-0 items-start rounded-full bg-neutral-200" style={{ backgroundColor: activeTheme.border }}>
-                    <div 
-                      className="flex items-start self-stretch rounded-full bg-brand-600" 
-                      style={{ width: `${percentComplete}%` }}
+                  <div
+                    className="h-1 w-full overflow-hidden rounded-full"
+                    style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
+                  >
+                    <div
+                      className="h-full rounded-full transition-all duration-300"
+                      style={{
+                        width: `${percentComplete}%`,
+                        background: 'linear-gradient(90deg, #7c3aed, #8b5cf6, #6366f1)',
+                      }}
                     />
                   </div>
-                  <div 
-                    className="flex h-3 w-3 flex-none items-start rounded-full bg-brand-600 shadow-md absolute ring-2 ring-brand-600 ring-offset-1"
-                    style={{ 
-                      left: `calc(${percentComplete}% - 6px)`,
-                      ['--tw-ring-offset-color' as any]: activeTheme.cardBg
+                  <div
+                    className="absolute h-3.5 w-3.5 flex-none rounded-full transition-all duration-300"
+                    style={{
+                      left: `calc(${percentComplete}% - 7px)`,
+                      background: '#8b5cf6',
+                      boxShadow: '0 0 8px rgba(139,92,246,0.7), 0 0 0 2px rgba(9,9,14,0.8)',
                     }}
                   />
                 </div>

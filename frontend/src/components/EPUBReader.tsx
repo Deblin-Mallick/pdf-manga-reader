@@ -1,13 +1,30 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { 
-  ArrowLeft, ChevronLeft, ChevronRight, Sun, Moon, Eye, 
-  ZoomIn, ZoomOut, Settings, Menu, X, BookOpen, Search, Bookmark, Edit, Trash2, Sliders
-} from 'lucide-react';
 import JSZip from 'jszip';
-import { Book } from '../App';
+import { Book, User } from '../App';
+import { Avatar, Badge, Button, IconButton, Select, Tabs, ToggleGroup } from '../ui';
+import * as SubframeCore from "@subframe/core";
+import {
+  FeatherAlignHorizontalSpaceAround,
+  FeatherAlignJustify,
+  FeatherArrowLeft,
+  FeatherBookmark,
+  FeatherBookOpen,
+  FeatherChevronLeft,
+  FeatherChevronRight,
+  FeatherList,
+  FeatherMessageSquare,
+  FeatherMinus,
+  FeatherPanelLeftClose,
+  FeatherPlus,
+  FeatherRows,
+  FeatherSearch,
+  FeatherStretchVertical,
+  FeatherType,
+} from "@subframe/core";
 
 interface EPUBReaderProps {
   book: Book;
+  user: User | null;
   token: string | null;
   onBack: () => void;
   onUpdateProgress: (
@@ -29,9 +46,10 @@ interface TOCItem {
 
 interface ReaderSettings {
   fontSize: number;       // font size in px
-  lineHeight: number;     // e.g. 1.6
+  lineHeight: 'tight' | 'relaxed' | 'loose';
   theme: 'light' | 'dark' | 'sepia';
-  fontFamily: 'literata' | 'georgia' | 'inter';
+  fontFamily: 'Literata' | 'Georgia' | 'Merriweather' | 'System Sans';
+  margin: 'narrow' | 'medium' | 'wide';
 }
 
 interface BookmarkItem {
@@ -127,6 +145,7 @@ function resolveRelativePath(basePath: string, relativePath: string): string {
 
 export default function EPUBReader({
   book,
+  user,
   token,
   onBack,
   onUpdateProgress,
@@ -142,25 +161,22 @@ export default function EPUBReader({
   
   const [settings, setSettings] = useState<ReaderSettings>({
     fontSize: savedPrefs.fontSize ?? (book.zoom ? Math.round(book.zoom * 18) : 18),
-    lineHeight: savedPrefs.lineHeight ?? 1.6,
+    lineHeight: savedPrefs.lineHeight ?? 'relaxed',
     theme: savedPrefs.theme ?? (
       book.view_mode === 'dark' || book.view_mode === 'sepia' || book.view_mode === 'light'
         ? book.view_mode
         : 'dark'
     ),
-    fontFamily: savedPrefs.fontFamily ?? 'literata',
+    fontFamily: savedPrefs.fontFamily ?? 'Literata',
+    margin: savedPrefs.margin ?? 'medium',
   });
-
 
   const [loading, setLoading] = useState<boolean>(true);
   const [loadingText, setLoadingText] = useState<string>('Downloading EPUB...');
   
   // Collapsible Sidebar & Tabs
-  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
   const [sidebarTab, setSidebarTab] = useState<'toc' | 'search' | 'bookmarks' | 'notes'>('toc');
-  
-  // Settings cog open state
-  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   
   // Bookmarks, Notes, Search states
   const [bookmarks, setBookmarks] = useState<BookmarkItem[]>([]);
@@ -169,7 +185,6 @@ export default function EPUBReader({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState<boolean>(false);
-  const [showFooter, setShowFooter] = useState<boolean>(false);
 
   // Persist all reader settings to localStorage on change
   useEffect(() => {
@@ -178,47 +193,6 @@ export default function EPUBReader({
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const blobUrlsRef = useRef<string[]>([]);
-
-  // Hide footer when page changes
-  useEffect(() => {
-    setShowFooter(false);
-  }, [currentPage]);
-
-  const handleIframeLoad = () => {
-    const iframe = iframeRef.current;
-    if (!iframe || !iframe.contentWindow || !iframe.contentDocument) return;
-
-    const doc = iframe.contentDocument;
-    const win = iframe.contentWindow;
-
-    const checkScroll = () => {
-      if (!doc.body || !doc.documentElement) return;
-
-      const scrollHeight = Math.max(
-        doc.body.scrollHeight,
-        doc.body.offsetHeight,
-        doc.documentElement.clientHeight,
-        doc.documentElement.scrollHeight,
-        doc.documentElement.offsetHeight
-      );
-
-      const clientHeight = doc.documentElement.clientHeight || doc.body.clientHeight || win.innerHeight;
-      const scrollTop = win.pageYOffset || doc.documentElement.scrollTop || doc.body.scrollTop;
-
-      // Check if we are near the bottom (within 40px)
-      // Or if the content fits entirely on one page without scrollbar
-      const isAtBottom = (scrollHeight - scrollTop - clientHeight) <= 40 || (scrollHeight <= clientHeight + 10);
-      setShowFooter(isAtBottom);
-    };
-
-    // Run initial check
-    checkScroll();
-
-    // Listeners for scroll and resize inside the iframe
-    doc.addEventListener('scroll', checkScroll, { passive: true });
-    win.addEventListener('scroll', checkScroll, { passive: true });
-    win.addEventListener('resize', checkScroll, { passive: true });
-  };
 
   // Load Bookmarks & Notes from localStorage
   useEffect(() => {
@@ -464,14 +438,33 @@ export default function EPUBReader({
       }
 
       // Apply Google fonts + styles
-      const activeTheme = themeStyles[settings.theme as 'light' | 'dark' | 'sepia'];
-      const fontStack = settings.fontFamily === 'literata' 
-        ? "'Literata', Georgia, serif" 
-        : settings.fontFamily === 'georgia' 
-          ? "Georgia, serif" 
-          : "'Inter', sans-serif";
+      const activeTheme = themeStyles[settings.theme];
+      let fontStack = "";
+      if (settings.fontFamily === 'Literata') {
+        fontStack = "'Literata', Georgia, serif";
+      } else if (settings.fontFamily === 'Georgia') {
+        fontStack = "Georgia, serif";
+      } else if (settings.fontFamily === 'Merriweather') {
+        fontStack = "'Merriweather', serif";
+      } else {
+        fontStack = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+      }
 
-      const googleFonts = `<link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,200..900;1,7..72,200..900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">`;
+      const googleFonts = `<link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,200..900;1,7..72,200..900&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">`;
+
+      const lineHeightVal = settings.lineHeight === 'tight' ? 1.3 : settings.lineHeight === 'loose' ? 2.0 : 1.6;
+      
+      const marginPadding = settings.margin === 'narrow' 
+        ? '40px 20px 100px 20px' 
+        : settings.margin === 'wide' 
+          ? '40px 120px 100px 120px' 
+          : '40px 60px 100px 60px';
+      
+      const maxWidth = settings.margin === 'narrow' 
+        ? '800px' 
+        : settings.margin === 'wide' 
+          ? '600px' 
+          : '700px';
 
       const styleInjection = `
         ${googleFonts}
@@ -481,10 +474,10 @@ export default function EPUBReader({
             color: ${activeTheme.text} !important;
             font-family: ${fontStack} !important;
             font-size: ${settings.fontSize}px !important;
-            line-height: ${settings.lineHeight} !important;
-            padding: 40px 60px 100px 60px !important;
+            line-height: ${lineHeightVal} !important;
+            padding: ${marginPadding} !important;
             margin: 0 auto !important;
-            max-width: 700px !important;
+            max-width: ${maxWidth} !important;
             transition: background-color 0.25s ease, color 0.25s ease !important;
           }
           p {
@@ -526,7 +519,7 @@ export default function EPUBReader({
     } catch (err) {
       console.error('Error loading EPUB page content:', err);
     }
-  }, [zip, spineHrefs, currentPage, settings.fontSize, settings.lineHeight, settings.theme, settings.fontFamily]);
+  }, [zip, spineHrefs, currentPage, settings.fontSize, settings.lineHeight, settings.theme, settings.fontFamily, settings.margin]);
 
   // Load content when dependencies change
   useEffect(() => {
@@ -659,7 +652,6 @@ export default function EPUBReader({
         if (file) {
           const text = await file.async('text');
           
-          // Simple DOM parser inside search loop to extract text
           const tempDoc = new DOMParser().parseFromString(text, 'text/html');
           const cleanText = tempDoc.body.textContent || tempDoc.body.innerText || '';
 
@@ -669,7 +661,6 @@ export default function EPUBReader({
             const end = Math.min(cleanText.length, index + searchQuery.length + 30);
             const snippet = cleanText.substring(start, end).replace(/\s+/g, ' ').trim();
             
-            // Find title of chapter
             const chTitle = toc.find((item: TOCItem) => item.href === path)?.title || `Chapter ${i + 1}`;
 
             results.push({
@@ -688,611 +679,583 @@ export default function EPUBReader({
     setSearchLoading(false);
   };
 
-  const activeTheme = themeStyles[settings.theme as 'light' | 'dark' | 'sepia'];
+  const handleIframeLoad = () => {};
+
+  const activeTheme = themeStyles[settings.theme];
   const percentComplete = Math.round(((currentPage) / (spineHrefs.length || 1)) * 100);
 
   return (
     <div 
-      style={{ 
-        display: 'flex', 
-        flex: 1, 
-        height: '100vh', 
-        position: 'fixed', 
-        top: 0,
-        left: 0,
-        width: '100vw',
-        zIndex: 999,
+      className="flex h-full w-full items-start"
+      style={{
         backgroundColor: activeTheme.bg,
         color: activeTheme.text,
-        transition: 'all 0.3s ease',
-        overflow: 'hidden'
+        transition: 'all 0.3s ease'
       }}
     >
-      {/* 1. COLLAPSIBLE SIDEBAR */}
+      {/* LEFT SIDEBAR */}
       {isSidebarOpen && (
         <div 
-          className="glass-panel"
-          style={{ 
-            width: '300px', 
-            height: '100%', 
-            borderRight: `1px solid ${activeTheme.border}`,
-            display: 'flex',
-            flexDirection: 'column',
+          className="flex w-72 flex-none flex-col items-start self-stretch border-r border-solid mobile:hidden"
+          style={{
             backgroundColor: activeTheme.sidebarBg,
+            borderColor: activeTheme.border,
             color: activeTheme.sidebarText,
-            zIndex: 10,
             transition: 'all 0.3s ease'
           }}
         >
-          {/* Sidebar Tabs */}
-          <div style={{ display: 'flex', borderBottom: `1px solid ${activeTheme.border}` }}>
-            <button 
-              onClick={() => setSidebarTab('toc')} 
-              style={{ flex: 1, padding: '12px 6px', fontSize: '0.8rem', fontWeight: 600, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', color: sidebarTab === 'toc' ? 'var(--accent-primary)' : 'inherit' }}
-            >
-              <BookOpen size={16} /> TOC
-            </button>
-            <button 
-              onClick={() => setSidebarTab('search')} 
-              style={{ flex: 1, padding: '12px 6px', fontSize: '0.8rem', fontWeight: 600, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', color: sidebarTab === 'search' ? 'var(--accent-primary)' : 'inherit' }}
-            >
-              <Search size={16} /> Search
-            </button>
-            <button 
-              onClick={() => setSidebarTab('bookmarks')} 
-              style={{ flex: 1, padding: '12px 6px', fontSize: '0.8rem', fontWeight: 600, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', color: sidebarTab === 'bookmarks' ? 'var(--accent-primary)' : 'inherit' }}
-            >
-              <Bookmark size={16} /> Marks
-            </button>
-            <button 
-              onClick={() => setSidebarTab('notes')} 
-              style={{ flex: 1, padding: '12px 6px', fontSize: '0.8rem', fontWeight: 600, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', color: sidebarTab === 'notes' ? 'var(--accent-primary)' : 'inherit' }}
-            >
-              <Edit size={16} /> Notes
-            </button>
+          <div className="flex w-full items-center gap-2 border-b border-solid px-4 py-3" style={{ borderColor: activeTheme.border }}>
+            <FeatherBookOpen className="text-heading-3 font-heading-3 text-brand-600" />
+            <span className="grow shrink-0 basis-0 text-heading-3 font-heading-3 text-default-font" style={{ color: activeTheme.heading }}>
+              SleekReader
+            </span>
+            <IconButton
+              variant="neutral-tertiary"
+              size="small"
+              icon={<FeatherPanelLeftClose />}
+              onClick={() => setIsSidebarOpen(false)}
+            />
           </div>
 
-          {/* Sidebar Content Area */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
-            
-            {/* TOC PANEL */}
-            {sidebarTab === 'toc' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <h3 style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Chapters</h3>
-                {toc.map((item, index) => {
-                  const spineIndex = spineHrefs.indexOf(item.href) + 1;
-                  const isActive = spineIndex === currentPage;
-                  return (
-                    <button
-                      key={index}
-                      onClick={() => {
-                        if (spineIndex > 0) setCurrentPage(spineIndex);
-                      }}
-                      style={{
-                        textAlign: 'left',
-                        padding: '10px 12px',
-                        borderRadius: '8px',
-                        fontSize: '0.85rem',
-                        fontWeight: isActive ? 600 : 400,
-                        backgroundColor: isActive ? activeTheme.activeBg : 'transparent',
-                        color: isActive ? 'var(--accent-secondary)' : 'inherit',
-                        transition: 'background 0.2s',
-                        lineHeight: 1.3
-                      }}
-                      className="hover-highlight"
-                    >
+          <Tabs className="px-2 pt-2">
+            <Tabs.Item active={sidebarTab === 'toc'} icon={<FeatherList />} onClick={() => setSidebarTab('toc')}>
+              TOC
+            </Tabs.Item>
+            <Tabs.Item active={sidebarTab === 'search'} icon={<FeatherSearch />} onClick={() => setSidebarTab('search')}>
+              Search
+            </Tabs.Item>
+            <Tabs.Item active={sidebarTab === 'bookmarks'} icon={<FeatherBookmark />} onClick={() => setSidebarTab('bookmarks')}>
+              Bookmarks
+            </Tabs.Item>
+            <Tabs.Item active={sidebarTab === 'notes'} icon={<FeatherMessageSquare />} onClick={() => setSidebarTab('notes')}>
+              Notes
+            </Tabs.Item>
+          </Tabs>
+
+          {/* TOC PANEL */}
+          {sidebarTab === 'toc' && (
+            <div className="flex w-full grow shrink-0 basis-0 flex-col items-start gap-1 px-2 py-3 overflow-auto">
+              <span className="text-caption-bold font-caption-bold text-subtext-color px-2 py-1">
+                CONTENTS
+              </span>
+              {toc.map((item, index) => {
+                const spineIndex = spineHrefs.indexOf(item.href) + 1;
+                const isActive = spineIndex === currentPage;
+                return (
+                  <div
+                    key={index}
+                    onClick={() => {
+                      if (spineIndex > 0) setCurrentPage(spineIndex);
+                    }}
+                    className={`flex w-full items-center gap-3 rounded-md px-3 py-2 cursor-pointer transition-all ${
+                      isActive
+                        ? "border-l-2 border-solid border-brand-600 bg-brand-50"
+                        : "hover:bg-neutral-100"
+                    }`}
+                  >
+                    <span className={`w-5 flex-none text-caption ${isActive ? "font-caption-bold text-brand-700" : "text-subtext-color"}`}>
+                      {index + 1}
+                    </span>
+                    <span className={`grow shrink-0 basis-0 text-body ${isActive ? "font-body-bold text-brand-700" : "text-subtext-color"}`}
+                          style={isActive ? { color: 'var(--color-brand-600)' } : undefined}>
                       {item.title}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* SEARCH PANEL */}
-            {sidebarTab === 'search' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <form onSubmit={handleSearch} style={{ display: 'flex', gap: '6px' }}>
-                  <input 
-                    type="text" 
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search inside book..." 
-                    style={{ flex: 1, padding: '8px 12px', borderRadius: '6px', border: `1px solid ${activeTheme.border}`, backgroundColor: 'rgba(0,0,0,0.05)', color: 'inherit', fontSize: '0.85rem', outline: 'none' }}
-                  />
-                  <button type="submit" style={{ padding: '8px', backgroundColor: 'var(--accent-primary)', color: '#fff', borderRadius: '6px' }}>
-                    <Search size={16} />
-                  </button>
-                </form>
-
-                {searchLoading ? (
-                  <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
-                    <div style={{ width: '24px', height: '24px', borderRadius: '50%', border: '2.5px solid var(--border-glass)', borderTopColor: 'var(--accent-primary)', animation: 'spin 1s linear infinite' }} />
+                    </span>
+                    {isActive && (
+                      <Badge variant="brand" icon={null}>
+                        Active
+                      </Badge>
+                    )}
                   </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* SEARCH PANEL */}
+          {sidebarTab === 'search' && (
+            <div className="flex w-full grow shrink-0 basis-0 flex-col items-start gap-3 px-3 py-3 overflow-auto">
+              <span className="text-caption-bold font-caption-bold text-subtext-color px-1">
+                SEARCH INSIDE BOOK
+              </span>
+              <form onSubmit={handleSearch} className="flex w-full items-center gap-2">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search text..."
+                  className="grow rounded-md border border-solid border-neutral-border bg-neutral-0 px-3 py-1.5 text-body font-body text-default-font focus:outline-none focus:ring-1 focus:ring-brand-600"
+                  style={{
+                    backgroundColor: activeTheme.cardBg,
+                    borderColor: activeTheme.border,
+                    color: activeTheme.text
+                  }}
+                />
+                <Button type="submit" variant="brand-primary" icon={<FeatherSearch />} className="px-3" />
+              </form>
+              {searchLoading ? (
+                <div className="flex w-full justify-center py-4">
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-solid border-brand-200 border-t-brand-600" />
+                </div>
+              ) : (
+                <div className="flex w-full flex-col gap-2">
+                  <span className="text-caption font-caption text-subtext-color px-1">
+                    {searchResults.length} matches found
+                  </span>
+                  {searchResults.map((res, i) => (
+                    <div
+                      key={i}
+                      onClick={() => setCurrentPage(res.chapterIndex)}
+                      className="flex w-full flex-col items-start gap-1 rounded-md border border-solid p-3 cursor-pointer hover:bg-neutral-100 transition-all"
+                      style={{
+                        borderColor: activeTheme.border,
+                        backgroundColor: activeTheme.cardBg
+                      }}
+                    >
+                      <span className="text-caption-bold font-caption-bold text-brand-700">
+                        {res.chapterTitle}
+                      </span>
+                      <span className="text-caption font-caption text-default-font italic line-clamp-3">
+                        {res.snippet}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* BOOKMARKS PANEL */}
+          {sidebarTab === 'bookmarks' && (
+            <div className="flex w-full grow shrink-0 basis-0 flex-col items-start gap-3 px-3 py-3 overflow-auto">
+              <span className="text-caption-bold font-caption-bold text-subtext-color px-1">
+                BOOKMARKS
+              </span>
+              <Button
+                variant="brand-secondary"
+                icon={<FeatherBookmark />}
+                onClick={toggleBookmark}
+                className="w-full justify-center"
+              >
+                {bookmarks.some(b => b.chapterIndex === currentPage) ? "Remove Bookmark" : "Add Bookmark"}
+              </Button>
+              <div className="flex w-full flex-col gap-2 mt-2">
+                <span className="text-caption-bold font-caption-bold text-subtext-color px-1">
+                  SAVED BOOKMARKS
+                </span>
+                {bookmarks.length === 0 ? (
+                  <span className="text-body font-body text-subtext-color px-1 italic">
+                    No bookmarks added yet.
+                  </span>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{searchResults.length} matches found</span>
-                    {searchResults.map((res, i) => (
-                      <div 
-                        key={i} 
-                        onClick={() => setCurrentPage(res.chapterIndex)}
-                        style={{ padding: '8px 10px', borderRadius: '6px', backgroundColor: 'rgba(0,0,0,0.02)', border: `1px solid ${activeTheme.border}`, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '4px' }}
-                        className="hover-highlight"
+                  bookmarks.map((b) => (
+                    <div
+                      key={b.id}
+                      className="flex w-full items-center justify-between gap-2 rounded-md border border-solid p-3 hover:bg-neutral-100 transition-all"
+                      style={{
+                        borderColor: activeTheme.border,
+                        backgroundColor: activeTheme.cardBg
+                      }}
+                    >
+                      <div
+                        onClick={() => setCurrentPage(b.chapterIndex)}
+                        className="flex grow flex-col items-start gap-1 cursor-pointer"
                       >
-                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent-secondary)' }}>{res.chapterTitle}</span>
-                        <p style={{ fontSize: '0.8rem', fontStyle: 'italic', margin: 0, lineHeight: 1.3 }}>{res.snippet}</p>
+                        <span className="text-caption-bold font-caption-bold text-default-font" style={{ color: activeTheme.heading }}>
+                          {b.chapterTitle}
+                        </span>
+                        <span className="text-caption font-caption text-subtext-color">
+                          Page {b.chapterIndex} • {b.addedAt}
+                        </span>
                       </div>
-                    ))}
-                  </div>
+                      <IconButton
+                        variant="destructive-tertiary"
+                        icon={<FeatherMinus />}
+                        onClick={() => {
+                          const updated = bookmarks.filter(bm => bm.id !== b.id);
+                          setBookmarks(updated);
+                          localStorage.setItem(`reader_bookmarks_${book.id}`, JSON.stringify(updated));
+                        }}
+                      />
+                    </div>
+                  ))
                 )}
               </div>
-            )}
+            </div>
+          )}
 
-            {/* BOOKMARKS PANEL */}
-            {sidebarTab === 'bookmarks' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <button 
-                  onClick={toggleBookmark}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', width: '100%', padding: '10px', borderRadius: '8px', backgroundColor: 'var(--accent-primary)', color: '#fff', fontSize: '0.85rem', fontWeight: 600 }}
-                >
-                  <Bookmark size={16} fill={bookmarks.some(b => b.chapterIndex === currentPage) ? '#fff' : 'none'} />
-                  {bookmarks.some(b => b.chapterIndex === currentPage) ? 'Bookmarked' : 'Add Bookmark'}
-                </button>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
-                  <h4 style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Saved Bookmarks</h4>
-                  {bookmarks.length === 0 ? (
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>No bookmarks added yet.</span>
-                  ) : (
-                    bookmarks.map((b) => (
-                      <div 
-                        key={b.id} 
-                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', borderRadius: '6px', backgroundColor: 'rgba(0,0,0,0.02)', border: `1px solid ${activeTheme.border}` }}
-                      >
-                        <button 
-                          onClick={() => setCurrentPage(b.chapterIndex)}
-                          style={{ flex: 1, textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '2px' }}
+          {/* NOTES PANEL */}
+          {sidebarTab === 'notes' && (
+            <div className="flex w-full grow shrink-0 basis-0 flex-col items-start gap-3 px-3 py-3 overflow-auto">
+              <span className="text-caption-bold font-caption-bold text-subtext-color px-1">
+                CHAPTER NOTES
+              </span>
+              <form onSubmit={handleAddNote} className="flex w-full flex-col gap-2">
+                <textarea
+                  value={newNote}
+                  onChange={(e) => setNewNote(e.target.value)}
+                  placeholder="Write note for current chapter..."
+                  className="w-full rounded-md border border-solid border-neutral-border bg-neutral-0 px-3 py-2 text-body font-body text-default-font focus:outline-none focus:ring-1 focus:ring-brand-600 resize-none"
+                  style={{
+                    backgroundColor: activeTheme.cardBg,
+                    borderColor: activeTheme.border,
+                    color: activeTheme.text
+                  }}
+                  rows={3}
+                />
+                <Button type="submit" variant="brand-secondary" className="w-full justify-center">
+                  Save Note
+                </Button>
+              </form>
+              <div className="flex w-full flex-col gap-2 mt-2">
+                <span className="text-caption-bold font-caption-bold text-subtext-color px-1">
+                  SAVED NOTES
+                </span>
+                {notes.length === 0 ? (
+                  <span className="text-body font-body text-subtext-color px-1 italic">
+                    No notes written yet.
+                  </span>
+                ) : (
+                  notes.map((n) => (
+                    <div
+                      key={n.id}
+                      className="flex w-full flex-col items-start gap-1 rounded-md border border-solid p-3 hover:bg-neutral-100 transition-all"
+                      style={{
+                        borderColor: activeTheme.border,
+                        backgroundColor: activeTheme.cardBg
+                      }}
+                    >
+                      <div className="flex w-full items-center justify-between">
+                        <span
+                          onClick={() => setCurrentPage(n.chapterIndex)}
+                          className="text-caption-bold font-caption-bold text-brand-700 cursor-pointer"
                         >
-                          <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>{b.chapterTitle}</span>
-                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Page {b.chapterIndex} • {b.addedAt}</span>
-                        </button>
-                        <button 
-                          onClick={() => {
-                            const updated = bookmarks.filter(bm => bm.id !== b.id);
-                            setBookmarks(updated);
-                            localStorage.setItem(`reader_bookmarks_${book.id}`, JSON.stringify(updated));
-                          }}
-                          style={{ color: '#ef4444', padding: '4px' }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                          {n.chapterTitle}
+                        </span>
+                        <IconButton
+                          variant="destructive-tertiary"
+                          icon={<FeatherMinus />}
+                          onClick={() => handleDeleteNote(n.id)}
+                        />
                       </div>
-                    ))
-                  )}
-                </div>
+                      <span className="text-caption font-caption text-default-font whitespace-pre-wrap">
+                        {n.noteText}
+                      </span>
+                      <span className="text-caption font-caption text-subtext-color mt-1">
+                        {n.addedAt}
+                      </span>
+                    </div>
+                  ))
+                )}
               </div>
-            )}
+            </div>
+          )}
 
-            {/* NOTES PANEL */}
-            {sidebarTab === 'notes' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <form onSubmit={handleAddNote} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Chapter Note ({currentChapterTitle()})</span>
-                  <textarea 
-                    value={newNote}
-                    onChange={(e) => setNewNote(e.target.value)}
-                    placeholder="Write your note here..." 
-                    rows={4}
-                    style={{ padding: '8px 12px', borderRadius: '6px', border: `1px solid ${activeTheme.border}`, backgroundColor: 'rgba(0,0,0,0.05)', color: 'inherit', fontSize: '0.85rem', outline: 'none', resize: 'vertical' }}
-                  />
-                  <button type="submit" style={{ padding: '8px 12px', backgroundColor: 'var(--accent-secondary)', color: '#fff', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600 }}>
-                    Save Note
-                  </button>
-                </form>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <h4 style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Saved Notes</h4>
-                  {notes.length === 0 ? (
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>No notes written yet.</span>
-                  ) : (
-                    notes.map((n) => (
-                      <div 
-                        key={n.id} 
-                        style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '10px', borderRadius: '6px', backgroundColor: 'rgba(0,0,0,0.02)', border: `1px solid ${activeTheme.border}` }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <button 
-                            onClick={() => setCurrentPage(n.chapterIndex)}
-                            style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent-primary)', textAlign: 'left' }}
-                          >
-                            {n.chapterTitle}
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteNote(n.id)}
-                            style={{ color: '#ef4444', padding: '2px' }}
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                        <p style={{ fontSize: '0.8rem', margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.3 }}>{n.noteText}</p>
-                        <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{n.addedAt}</span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-
+          {/* USER AVATAR / PROFILE FOOTER IN SIDEBAR */}
+          <div className="flex w-full items-center gap-3 border-t border-solid px-4 py-3" style={{ borderColor: activeTheme.border }}>
+            <Avatar size="small" image={user?.picture || undefined}>
+              {user?.name ? user.name[0].toUpperCase() : 'G'}
+            </Avatar>
+            <div className="flex grow shrink-0 basis-0 flex-col items-start">
+              <span className="text-caption-bold font-caption-bold text-default-font" style={{ color: activeTheme.heading }}>
+                {user?.name || 'Guest User'}
+              </span>
+              <span className="text-caption font-caption text-subtext-color">
+                {user?.email || 'Guest Session'}
+              </span>
+            </div>
           </div>
         </div>
       )}
 
-      {/* 2. MAIN READING WORKSPACE */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', height: '100%' }}>
-        
+      {/* MAIN READING WORKSPACE */}
+      <div className="flex grow shrink-0 basis-0 flex-col items-center self-stretch overflow-hidden h-full">
         {/* HEADER BAR */}
-        <div 
-          className="glass-panel" 
-          style={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center', 
-            padding: '12px 24px', 
-            borderBottom: `1px solid ${activeTheme.border}`,
-            zIndex: 5,
-            backgroundColor: activeTheme.cardBg
-          }}
+        <div className="flex w-full items-center gap-3 border-b border-solid bg-neutral-0 px-4 py-2.5"
+             style={{
+               borderColor: activeTheme.border,
+               backgroundColor: activeTheme.cardBg
+             }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button 
-              onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
-              style={{ color: 'inherit', padding: '6px', borderRadius: '6px', backgroundColor: 'rgba(255,255,255,0.02)' }}
-              title="Toggle Sidebar (☰)"
-            >
-              {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
-            </button>
-            <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)', fontSize: '0.85rem' }} className="hover-white">
-              <ArrowLeft size={16} /> Back
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, minWidth: 0, maxWidth: '40%', margin: '0 12px' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <IconButton
+            variant="neutral-tertiary"
+            icon={<FeatherArrowLeft />}
+            onClick={onBack}
+          />
+          {!isSidebarOpen && (
+            <IconButton
+              variant="neutral-tertiary"
+              icon={<FeatherList />}
+              onClick={() => setIsSidebarOpen(true)}
+            />
+          )}
+          <div className="flex h-6 w-px flex-none flex-col items-start bg-neutral-border mobile:hidden" style={{ backgroundColor: activeTheme.border }} />
+          <div className="flex min-w-[0px] grow shrink-0 basis-0 flex-col items-start">
+            <span className="line-clamp-1 w-full text-body-bold font-body-bold text-default-font" style={{ color: activeTheme.heading }}>
               {book.title}
             </span>
-            <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {currentChapterTitle()}
+            <span className="line-clamp-1 w-full text-caption font-caption text-subtext-color">
+              EPUB Document
             </span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            {/* Search sidebar focus */}
-            <button 
-              onClick={() => { setIsSidebarOpen(true); setSidebarTab('search'); }}
-              style={{ color: 'inherit', padding: '6px' }}
-              title="Search Book"
-            >
-              <Search size={18} />
-            </button>
-
-            {/* Quick Cycle Theme */}
-            <button 
+          <div className="flex items-center gap-1">
+            <IconButton
+              variant="neutral-tertiary"
+              icon={<FeatherSearch />}
               onClick={() => {
-                const nextTheme = settings.theme === 'light' ? 'sepia' : settings.theme === 'sepia' ? 'dark' : 'light';
-                setSettings(prev => ({ ...prev, theme: nextTheme }));
+                setIsSidebarOpen(true);
+                setSidebarTab('search');
               }}
-              style={{ color: 'inherit', padding: '6px' }}
-              title="Cycle Theme"
-            >
-              {settings.theme === 'light' ? <Sun size={18} /> : settings.theme === 'sepia' ? <Eye size={18} /> : <Moon size={18} />}
-            </button>
-
-            {/* Bookmark current status */}
-            <button 
+            />
+            <IconButton
+              variant="neutral-tertiary"
+              icon={<FeatherBookmark />}
+              style={bookmarks.some(b => b.chapterIndex === currentPage) ? { color: 'var(--color-brand-600)' } : undefined}
               onClick={toggleBookmark}
-              style={{ color: bookmarks.some(b => b.chapterIndex === currentPage) ? 'var(--accent-primary)' : 'inherit', padding: '6px' }}
-              title="Bookmark Chapter"
-            >
-              <Bookmark size={18} fill={bookmarks.some(b => b.chapterIndex === currentPage) ? 'currentColor' : 'none'} />
-            </button>
+            />
 
-            {/* Settings toggler */}
-            <button 
-              onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-              style={{ color: isSettingsOpen ? 'var(--accent-secondary)' : 'inherit', padding: '6px' }}
-              title="Reader Options (⚙️)"
-            >
-              <Settings size={18} />
-            </button>
+            {/* Typography Dropdown Menu */}
+            <SubframeCore.DropdownMenu.Root>
+              <SubframeCore.DropdownMenu.Trigger asChild>
+                <Button
+                  variant="neutral-secondary"
+                  icon={<FeatherType />}
+                >
+                  Aa
+                </Button>
+              </SubframeCore.DropdownMenu.Trigger>
+              <SubframeCore.DropdownMenu.Portal>
+                <SubframeCore.DropdownMenu.Content
+                  side="bottom"
+                  align="end"
+                  sideOffset={6}
+                  asChild
+                >
+                  <div 
+                    className="flex w-80 flex-none flex-col items-start gap-4 rounded-xl border border-solid px-4 py-4 shadow-lg"
+                    style={{
+                      backgroundColor: settings.theme === 'light' ? '#ffffff' : settings.theme === 'sepia' ? '#FDF6E3' : '#1e293b',
+                      borderColor: settings.theme === 'light' ? '#e2e8f0' : settings.theme === 'sepia' ? '#e4dcc4' : '#334155',
+                      color: settings.theme === 'light' ? '#1f2937' : settings.theme === 'sepia' ? '#5C4636' : '#f8fafc',
+                    }}
+                  >
+                    {/* FONT FAMILY */}
+                    <div className="flex w-full flex-col items-start gap-1.5">
+                      <span className="text-caption-bold font-caption-bold text-subtext-color" style={{ color: settings.theme === 'light' ? '#64748b' : settings.theme === 'sepia' ? '#8c7662' : '#94a3b8' }}>
+                        FONT FAMILY
+                      </span>
+                      <Select
+                        className="h-auto w-full flex-none"
+                        variant="filled"
+                        placeholder="Select font"
+                        value={settings.fontFamily}
+                        onValueChange={(value: string) => {
+                          setSettings(prev => ({ ...prev, fontFamily: value as any }));
+                        }}
+                      >
+                        <Select.Item value="Literata">Literata</Select.Item>
+                        <Select.Item value="Georgia">Georgia</Select.Item>
+                        <Select.Item value="Merriweather">Merriweather</Select.Item>
+                        <Select.Item value="System Sans">System Sans</Select.Item>
+                      </Select>
+                    </div>
+
+                    {/* FONT SIZE */}
+                    <div className="flex w-full flex-col items-start gap-1.5">
+                      <span className="text-caption-bold font-caption-bold text-subtext-color" style={{ color: settings.theme === 'light' ? '#64748b' : settings.theme === 'sepia' ? '#8c7662' : '#94a3b8' }}>
+                        FONT SIZE
+                      </span>
+                      <div className="flex w-full items-center justify-between rounded-md px-2 py-1.5"
+                           style={{ backgroundColor: settings.theme === 'light' ? '#f1f5f9' : settings.theme === 'sepia' ? '#f4ecd8' : '#0f172a' }}>
+                        <IconButton
+                          variant="neutral-tertiary"
+                          size="small"
+                          icon={<FeatherMinus />}
+                          onClick={() => {
+                            setSettings(prev => ({ ...prev, fontSize: Math.max(12, prev.fontSize - 1) }));
+                          }}
+                        />
+                        <span className="text-body-bold font-body-bold text-default-font" style={{ color: settings.theme === 'light' ? '#1f2937' : settings.theme === 'sepia' ? '#5C4636' : '#f8fafc' }}>
+                          {settings.fontSize} px
+                        </span>
+                        <IconButton
+                          variant="neutral-tertiary"
+                          size="small"
+                          icon={<FeatherPlus />}
+                          onClick={() => {
+                            setSettings(prev => ({ ...prev, fontSize: Math.min(36, prev.fontSize + 1) }));
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* LINE SPACING */}
+                    <div className="flex w-full flex-col items-start gap-1.5">
+                      <span className="text-caption-bold font-caption-bold text-subtext-color" style={{ color: settings.theme === 'light' ? '#64748b' : settings.theme === 'sepia' ? '#8c7662' : '#94a3b8' }}>
+                        LINE SPACING
+                      </span>
+                      <ToggleGroup
+                        className="h-auto w-full flex-none"
+                        value={settings.lineHeight}
+                        onValueChange={(value: string) => {
+                          if (value) setSettings(prev => ({ ...prev, lineHeight: value as any }));
+                        }}
+                      >
+                        <ToggleGroup.Item icon={<FeatherAlignJustify />} value="tight">Tight</ToggleGroup.Item>
+                        <ToggleGroup.Item icon={<FeatherRows />} value="relaxed">Relaxed</ToggleGroup.Item>
+                        <ToggleGroup.Item icon={<FeatherStretchVertical />} value="loose">Loose</ToggleGroup.Item>
+                      </ToggleGroup>
+                    </div>
+
+                    {/* MARGINS */}
+                    <div className="flex w-full flex-col items-start gap-1.5">
+                      <span className="text-caption-bold font-caption-bold text-subtext-color" style={{ color: settings.theme === 'light' ? '#64748b' : settings.theme === 'sepia' ? '#8c7662' : '#94a3b8' }}>
+                        MARGINS
+                      </span>
+                      <ToggleGroup
+                        className="h-auto w-full flex-none"
+                        value={settings.margin}
+                        onValueChange={(value: string) => {
+                          if (value) setSettings(prev => ({ ...prev, margin: value as any }));
+                        }}
+                      >
+                        <ToggleGroup.Item icon={<FeatherAlignHorizontalSpaceAround />} value="narrow">Narrow</ToggleGroup.Item>
+                        <ToggleGroup.Item icon={<FeatherAlignHorizontalSpaceAround />} value="medium">Medium</ToggleGroup.Item>
+                        <ToggleGroup.Item icon={<FeatherAlignHorizontalSpaceAround />} value="wide">Wide</ToggleGroup.Item>
+                      </ToggleGroup>
+                    </div>
+
+                    <div className="flex h-px w-full flex-none items-start bg-neutral-200" style={{ backgroundColor: settings.theme === 'light' ? '#e2e8f0' : settings.theme === 'sepia' ? '#e4dcc4' : '#334155' }} />
+
+                    {/* THEME */}
+                    <div className="flex w-full items-center justify-between">
+                      <span className="text-caption-bold font-caption-bold text-subtext-color" style={{ color: settings.theme === 'light' ? '#64748b' : settings.theme === 'sepia' ? '#8c7662' : '#94a3b8' }}>
+                        THEME
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => setSettings(prev => ({ ...prev, theme: 'dark' }))}
+                          className={`flex h-7 w-7 flex-none items-center justify-center rounded-full bg-slate-900 border border-solid border-slate-700 cursor-pointer ${settings.theme === 'dark' ? 'ring-2 ring-brand-600 ring-offset-1 ring-offset-slate-900' : ''}`}
+                        >
+                          <span className="text-caption-bold font-caption-bold text-slate-100">
+                            A
+                          </span>
+                        </button>
+                        <button 
+                          onClick={() => setSettings(prev => ({ ...prev, theme: 'sepia' }))}
+                          className={`flex h-7 w-7 flex-none items-center justify-center rounded-full bg-[#f5ecd8] border border-solid border-[#d7cbaf] cursor-pointer ${settings.theme === 'sepia' ? 'ring-2 ring-brand-600 ring-offset-1 ring-offset-neutral-100' : ''}`}
+                        >
+                          <span className="text-caption-bold font-caption-bold text-[#5b4a2f]">
+                            A
+                          </span>
+                        </button>
+                        <button 
+                          onClick={() => setSettings(prev => ({ ...prev, theme: 'light' }))}
+                          className={`flex h-7 w-7 flex-none items-center justify-center rounded-full bg-white border border-solid border-neutral-300 cursor-pointer ${settings.theme === 'light' ? 'ring-2 ring-brand-600 ring-offset-1 ring-offset-neutral-100' : ''}`}
+                        >
+                          <span className="text-caption-bold font-caption-bold text-neutral-900">
+                            A
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </SubframeCore.DropdownMenu.Content>
+              </SubframeCore.DropdownMenu.Portal>
+            </SubframeCore.DropdownMenu.Root>
           </div>
         </div>
 
-        {/* SETTINGS POP-OVER PANEL */}
-        {isSettingsOpen && (
+        {/* READING SURFACE AREA */}
+        <div className="flex w-full grow shrink-0 basis-0 flex-col items-center px-6 py-4 overflow-hidden mobile:px-4">
           <div 
-            className="glass-panel"
-            style={{ 
-              position: 'absolute', 
-              top: '64px', 
-              right: '24px', 
-              width: '280px',
-              padding: '20px', 
-              borderRadius: '12px',
-              boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
-              backgroundColor: activeTheme.sidebarBg,
-              color: activeTheme.sidebarText,
-              border: `1px solid ${activeTheme.border}`,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '16px',
-              zIndex: 100
+            className="flex w-full grow flex-col items-center justify-center rounded-xl border border-solid shadow-md overflow-hidden"
+            style={{
+              borderColor: activeTheme.border,
+              backgroundColor: activeTheme.cardBg,
+              width: '100%',
+              maxWidth: '96%',
+              height: '100%',
+              transition: 'all 0.3s ease'
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifySelf: 'flex-start', gap: '8px', borderBottom: `1px solid ${activeTheme.border}`, paddingBottom: '8px' }}>
-              <Sliders size={16} style={{ color: 'var(--accent-primary)' }} />
-              <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Reader Options</span>
-            </div>
-
-            {/* Font family */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Font Family</label>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                {(['literata', 'georgia', 'inter'] as const).map((font) => (
-                  <button
-                    key={font}
-                    onClick={() => setSettings(prev => ({ ...prev, fontFamily: font }))}
-                    style={{
-                      flex: 1,
-                      padding: '6px',
-                      borderRadius: '4px',
-                      fontSize: '0.75rem',
-                      textTransform: 'capitalize',
-                      border: `1px solid ${settings.fontFamily === font ? 'var(--accent-primary)' : activeTheme.border}`,
-                      backgroundColor: settings.fontFamily === font ? activeTheme.activeBg : 'transparent',
-                      color: 'inherit',
-                      fontWeight: settings.fontFamily === font ? 600 : 400
-                    }}
-                  >
-                    {font}
-                  </button>
-                ))}
+            {loading ? (
+              <div className="flex flex-col items-center gap-4">
+                <div className="h-10 w-10 animate-spin rounded-full border-3 border-solid border-brand-200 border-t-brand-600" />
+                <p className="text-body font-body text-subtext-color">{loadingText}</p>
               </div>
-            </div>
-
-            {/* Font size */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Font Size</label>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{settings.fontSize}px</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <button 
-                  onClick={() => setSettings(prev => ({ ...prev, fontSize: Math.max(12, prev.fontSize - 1) }))}
-                  style={{ color: 'inherit', padding: '4px' }}
-                >
-                  <ZoomOut size={14} />
-                </button>
-                <input 
-                  type="range" 
-                  min="12" 
-                  max="36" 
-                  value={settings.fontSize}
-                  onChange={(e) => setSettings(prev => ({ ...prev, fontSize: parseInt(e.target.value) }))}
-                  style={{ flex: 1, accentColor: 'var(--accent-primary)' }}
-                />
-                <button 
-                  onClick={() => setSettings(prev => ({ ...prev, fontSize: Math.min(36, prev.fontSize + 1) }))}
-                  style={{ color: 'inherit', padding: '4px' }}
-                >
-                  <ZoomIn size={14} />
-                </button>
-              </div>
-            </div>
-
-            {/* Line height */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Line Height</label>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{settings.lineHeight}</span>
-              </div>
-              <input 
-                type="range" 
-                min="1.2" 
-                max="2.2" 
-                step="0.1"
-                value={settings.lineHeight}
-                onChange={(e) => setSettings(prev => ({ ...prev, lineHeight: parseFloat(e.target.value) }))}
-                style={{ width: '100%', accentColor: 'var(--accent-secondary)' }}
-              />
-            </div>
-
-            {/* Themes */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Reading Theme</label>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                {(['light', 'sepia', 'dark'] as const).map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setSettings(prev => ({ ...prev, theme: t }))}
-                    style={{
-                      flex: 1,
-                      padding: '8px',
-                      borderRadius: '6px',
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      textTransform: 'capitalize',
-                      border: `1px solid ${settings.theme === t ? 'var(--accent-secondary)' : activeTheme.border}`,
-                      backgroundColor: t === 'light' ? '#ffffff' : t === 'sepia' ? '#FDF6E3' : '#1f2937',
-                      color: t === 'light' ? '#1f2937' : t === 'sepia' ? '#5c4636' : '#e5e7eb',
-                    }}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* READING SURFACE AREA */}
-        <div 
-          style={{
-            flex: 1,
-            height: '100%',
-            minHeight: 0,
-            overflow: 'hidden',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            padding: '12px 24px',
-            transition: 'background 0.3s'
-          }}
-        >
-          {loading ? (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', margin: 'auto' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '50%', border: '3px solid var(--border-glass)', borderTopColor: 'var(--accent-primary)', animation: 'spin 1s linear infinite' }} />
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{loadingText}</p>
-            </div>
-          ) : (
-            <div 
-              style={{
-                width: '100%',
-                maxWidth: '96%',
-                height: '100%',
-                borderRadius: '12px',
-                boxShadow: settings.theme === 'dark' ? '0 10px 40px rgba(0,0,0,0.5)' : '0 10px 40px rgba(0,0,0,0.08)',
-                overflow: 'hidden',
-                border: `1px solid ${activeTheme.border}`,
-                backgroundColor: activeTheme.cardBg,
-                transition: 'background-color 0.3s, border 0.3s, height 0.3s ease',
-                display: 'flex',
-                flexDirection: 'column'
-              }}
-            >
-              <iframe 
-                ref={iframeRef} 
+            ) : (
+              <iframe
+                ref={iframeRef}
                 srcDoc={pageHtml}
                 onLoad={handleIframeLoad}
-                style={{ 
-                  width: '100%',
-                  height: '100%',
-                  border: 'none',
-                  backgroundColor: 'transparent'
-                }}
+                className="w-full h-full border-none bg-transparent"
                 title="EPUB Content Canvas"
               />
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* BOTTOM NAVIGATION / PROGRESS BAR */}
         {!loading && (
-          <div 
-            className="glass-panel" 
-            style={{ 
-              position: 'absolute',
-              bottom: 0,
-              left: 0,
-              right: 0,
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center', 
-              padding: '12px 24px', 
-              borderTop: `1px solid ${activeTheme.border}`,
-              backgroundColor: activeTheme.cardBg,
-              zIndex: 10,
-              boxShadow: settings.theme === 'dark' ? '0 -8px 24px rgba(0,0,0,0.4)' : '0 -8px 24px rgba(0,0,0,0.06)',
-              transform: showFooter ? 'translateY(0)' : 'translateY(100%)',
-              opacity: showFooter ? 1 : 0,
-              visibility: showFooter ? 'visible' : 'hidden',
-              transition: 'transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease, visibility 0.3s'
-            }}
+          <div className="flex w-full flex-col items-center gap-2 border-t border-solid bg-neutral-0 px-6 py-3 mobile:px-4"
+               style={{
+                 borderColor: activeTheme.border,
+                 backgroundColor: activeTheme.cardBg
+               }}
           >
-            {/* Previous */}
-            <button 
-              onClick={handlePrevPage} 
-              disabled={currentPage <= 1}
-              style={{ 
-                color: currentPage <= 1 ? 'var(--text-muted)' : 'inherit', 
-                padding: '8px 16px', 
-                borderRadius: '8px', 
-                backgroundColor: 'rgba(0,0,0,0.02)',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                border: `1px solid ${activeTheme.border}`
-              }}
-              className="hover-highlight"
-            >
-              <ChevronLeft size={16} /> Prev
-            </button>
-
-            {/* Custom progress percentage and bar slider */}
-            <div style={{ flex: 1, maxWidth: '480px', display: 'flex', alignItems: 'center', gap: '16px', margin: '0 24px' }}>
-              <div 
-                style={{ 
-                  flex: 1, 
-                  height: '6px', 
-                  borderRadius: '3px', 
-                  backgroundColor: 'rgba(0,0,0,0.1)', 
-                  position: 'relative',
-                  overflow: 'hidden',
-                  background: settings.theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'
-                }}
-              >
+            <div className="flex w-full items-center gap-4 max-w-[680px]">
+              <IconButton
+                variant="neutral-tertiary"
+                icon={<FeatherChevronLeft />}
+                disabled={currentPage <= 1}
+                onClick={handlePrevPage}
+              />
+              <div className="flex grow shrink-0 basis-0 flex-col items-center gap-2">
+                <div className="flex w-full items-center justify-between">
+                  <span className="line-clamp-1 text-caption-bold font-caption-bold text-default-font" style={{ color: activeTheme.heading }}>
+                    {currentChapterTitle()}
+                  </span>
+                  <span className="text-caption font-caption text-subtext-color">
+                    Page {currentPage} of {spineHrefs.length} ({percentComplete}%)
+                  </span>
+                </div>
                 <div 
-                  style={{ 
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    height: '100%',
-                    width: `${percentComplete}%`,
-                    backgroundColor: 'var(--accent-primary)',
-                    transition: 'width 0.3s ease'
+                  onClick={(e) => {
+                    if (spineHrefs.length === 0) return;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const clickX = e.clientX - rect.left;
+                    const percentage = clickX / rect.width;
+                    const targetPage = Math.max(1, Math.min(spineHrefs.length, Math.round(percentage * spineHrefs.length)));
+                    setCurrentPage(targetPage);
                   }}
-                />
+                  className="flex w-full items-center py-1 relative cursor-pointer"
+                >
+                  <div className="flex h-0.5 grow shrink-0 basis-0 items-start rounded-full bg-neutral-200" style={{ backgroundColor: activeTheme.border }}>
+                    <div 
+                      className="flex items-start self-stretch rounded-full bg-brand-600" 
+                      style={{ width: `${percentComplete}%` }}
+                    />
+                  </div>
+                  <div 
+                    className="flex h-3 w-3 flex-none items-start rounded-full bg-brand-600 shadow-md absolute ring-2 ring-brand-600 ring-offset-1"
+                    style={{ 
+                      left: `calc(${percentComplete}% - 6px)`,
+                      ['--tw-ring-offset-color' as any]: activeTheme.cardBg
+                    }}
+                  />
+                </div>
               </div>
-              <span style={{ fontSize: '0.8rem', fontWeight: 600, width: '70px', textAlign: 'right', color: 'var(--text-secondary)' }}>
-                {currentPage} / {spineHrefs.length} ({percentComplete}%)
-              </span>
+              <IconButton
+                variant="neutral-tertiary"
+                icon={<FeatherChevronRight />}
+                disabled={currentPage >= spineHrefs.length}
+                onClick={handleNextPage}
+              />
             </div>
-
-            {/* Next */}
-            <button 
-              onClick={handleNextPage} 
-              disabled={currentPage >= spineHrefs.length}
-              style={{ 
-                color: currentPage >= spineHrefs.length ? 'var(--text-muted)' : 'inherit', 
-                padding: '8px 16px', 
-                borderRadius: '8px', 
-                backgroundColor: 'rgba(0,0,0,0.02)',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                border: `1px solid ${activeTheme.border}`
-              }}
-              className="hover-highlight"
-            >
-              Next <ChevronRight size={16} />
-            </button>
           </div>
         )}
-
       </div>
-
-      <style>{`
-        .hover-white:hover { color: #fff !important; }
-        .hover-highlight:hover {
-          background-color: ${activeTheme.activeBg} !important;
-        }
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-      `}</style>
     </div>
   );
 }

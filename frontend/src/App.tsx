@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { LogOut, BookOpen } from 'lucide-react';
 import { Routes, Route, Navigate, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -411,47 +410,8 @@ export default function App() {
   }
 
   return (
-    <div className="app-container">
-      {/* Header Panel */}
-      <header className="glass-panel m-4 px-6 py-3 flex justify-between items-center z-10">
-        <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
-          <BookOpen size={28} className="pulse-glow text-[var(--accent-primary)]" />
-          <h1 className="text-xl bg-gradient-to-r from-white to-[var(--text-secondary)] bg-clip-text text-transparent font-semibold">
-            SleekReader
-          </h1>
-        </div>
-
-        <div className="flex items-center gap-4">
-          {/* User Section */}
-          {user && (
-            <div className="flex items-center gap-3">
-              {user.picture ? (
-                <img src={user.picture} alt={user.name} className="w-9 h-9 rounded-full border-1.5 border-[var(--accent-secondary)]" />
-              ) : (
-                <div className="w-9 h-9 rounded-full bg-[var(--accent-primary)] flex items-center justify-center font-bold">
-                  {user.name[0]}
-                </div>
-              )}
-              <span className="text-sm text-[var(--text-primary)] font-medium hidden md:inline">
-                {user.name}
-              </span>
-              {!user.id.startsWith('guest_') ? (
-                <button onClick={handleSignOut} className="btn-secondary py-2 px-3" title="Log Out">
-                  <LogOut size={16} />
-                </button>
-              ) : (
-                /* Google login button in header for Guest users */
-                googleClientId && (
-                  <div id="google-signin-btn" className="inline-block"></div>
-                )
-              )}
-            </div>
-          )}
-        </div>
-      </header>
-
-      {/* Main Body */}
-      <main className="flex-1 px-4 pb-8 flex flex-col">
+    <div className={location.pathname === '/' ? 'min-h-screen' : 'app-container'}>
+      <main className={location.pathname === '/' ? 'flex min-h-screen flex-col' : 'flex flex-1 flex-col px-4 pb-8'}>
         {isLoadingBooks || isLoadingUser ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-4">
             <div className="w-12 h-12 rounded-full border-4 border-[var(--border-glass)] border-t-[var(--accent-primary)] animate-spin" />
@@ -481,6 +441,7 @@ export default function App() {
                         }
                       }}
                       onInitGoogleAuth={initGoogleLogin}
+                      onSignOut={handleSignOut}
                     />
                   </motion.div>
                 }
@@ -491,6 +452,7 @@ export default function App() {
                   <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" className="flex-1 flex flex-col">
                     <ReaderWrapper
                       books={books}
+                      user={user || null}
                       token={token}
                       updateProgressMutation={updateProgressMutation}
                     />
@@ -508,11 +470,12 @@ export default function App() {
 
 interface ReaderWrapperProps {
   books: Book[];
+  user: User | null;
   token: string | null;
   updateProgressMutation: any;
 }
 
-function ReaderWrapper({ books, token, updateProgressMutation }: ReaderWrapperProps) {
+function ReaderWrapper({ books, user, token, updateProgressMutation }: ReaderWrapperProps) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const book = books.find((b) => b.id === id);
@@ -558,6 +521,7 @@ function ReaderWrapper({ books, token, updateProgressMutation }: ReaderWrapperPr
     return (
       <EPUBReader
         book={book}
+        user={user}
         token={token}
         onBack={handleBack}
         onUpdateProgress={handleUpdateProgress}

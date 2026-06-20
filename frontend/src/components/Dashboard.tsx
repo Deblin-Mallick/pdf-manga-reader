@@ -1,13 +1,38 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Trash2, Book, FileText, Search, Play, Plus, BookOpen, RefreshCw, Sparkles, X } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import JSZip from 'jszip';
-import { motion, AnimatePresence } from 'framer-motion';
+import { RefreshCw, Trash2 } from 'lucide-react';
 import { Book as BookType, User } from '../App';
-import { cn } from '@/lib/utils';
+import { Avatar } from '@/ui/components/Avatar';
+import { Badge } from '@/ui/components/Badge';
+import { Button } from '@/ui/components/Button';
+import { IconButton } from '@/ui/components/IconButton';
+import { Progress } from '@/ui/components/Progress';
+import { Select } from '@/ui/components/Select';
+import { TextField } from '@/ui/components/TextField';
+import { ToggleGroup } from '@/ui/components/ToggleGroup';
+import {
+  FeatherArrowRight,
+  FeatherBell,
+  FeatherBook,
+  FeatherBookOpen,
+  FeatherBookOpenCheck,
+  FeatherClock,
+  FeatherFiles,
+  FeatherGrid,
+  FeatherHeart,
+  FeatherLayout,
+  FeatherList,
+  FeatherMenu,
+  FeatherPlay,
+  FeatherSearch,
+  FeatherSettings,
+  FeatherTrendingUp,
+  FeatherUploadCloud,
+} from '@subframe/core';
 
-// Setup PDF.js worker source via CDN for flawless Vite bundling
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
 
 interface DashboardProps {
   books: BookType[];
@@ -18,6 +43,63 @@ interface DashboardProps {
   onDeleteBook: (bookId: string) => void;
   onConvertBook: (bookId: string) => void;
   onInitGoogleAuth: () => void;
+  onSignOut?: () => void;
+}
+
+type SortMode = 'recent' | 'title' | 'progress' | 'added';
+type ViewMode = 'grid' | 'list';
+
+function progressFor(book: BookType) {
+  if (!book.total_pages) return 0;
+  return Math.min(100, Math.round((book.current_page / book.total_pages) * 100));
+}
+
+function formatRelativeDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not read yet';
+  const diff = Date.now() - date.getTime();
+  const hours = Math.floor(diff / 3_600_000);
+  if (hours < 1) return 'Read just now';
+  if (hours < 24) return `Read ${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hours / 24);
+  return `Read ${days} day${days === 1 ? '' : 's'} ago`;
+}
+
+function Cover({ book, className }: { book: BookType; className: string }) {
+  if (book.cover_path) {
+    return <img className={className} src={book.cover_path} alt={`${book.title} cover`} />;
+  }
+
+  return (
+    <div className={`${className} flex items-center justify-center bg-gradient-to-br from-brand-100 to-neutral-200 p-4`}>
+      <FeatherBookOpen className="text-heading-1 font-heading-1 text-brand-700" />
+    </div>
+  );
+}
+
+function RailItem({ icon, label, active = false, badge }: {
+  icon: React.ReactNode;
+  label: string;
+  active?: boolean;
+  badge?: number;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      className={`relative flex w-10 items-center justify-center rounded-md px-2 py-2 ${
+        active ? 'bg-neutral-100 text-brand-600' : 'text-subtext-color hover:bg-neutral-100'
+      }`}
+    >
+      {icon}
+      {badge ? (
+        <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-medium text-black">
+          {badge}
+        </span>
+      ) : null}
+    </button>
+  );
 }
 
 export default function Dashboard({
@@ -29,104 +111,63 @@ export default function Dashboard({
   onDeleteBook,
   onConvertBook,
   onInitGoogleAuth,
+  onSignOut,
 }: DashboardProps) {
-  const [isDragging, setIsDragging] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState<string>('');
-  const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'all' | 'pdf' | 'cbz' | 'completed'>('all');
+  const [sortMode, setSortMode] = useState<SortMode>('recent');
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [uploadStatus, setUploadStatus] = useState('');
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [convertToEpub, setConvertToEpub] = useState(false);
-  const [showNudge, setShowNudge] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Show "Save your library" nudge for guests who have uploaded at least 1 book
-  const isGuest = user?.id?.startsWith('guest_');
+  const inProgress = useMemo(
+    () => books.filter((book) => book.current_page > 0 && progressFor(book) < 100),
+    [books],
+  );
+  const completed = useMemo(() => books.filter((book) => progressFor(book) >= 100), [books]);
+  const resumeBook = [...inProgress].sort(
+    (a, b) => new Date(b.last_read_at).getTime() - new Date(a.last_read_at).getTime(),
+  )[0];
+
+  const visibleBooks = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    const filtered = books.filter((book) => book.title.toLowerCase().includes(query));
+    return [...filtered].sort((a, b) => {
+      if (sortMode === 'title') return a.title.localeCompare(b.title);
+      if (sortMode === 'progress') return progressFor(b) - progressFor(a);
+      if (sortMode === 'added') return new Date(b.added_at).getTime() - new Date(a.added_at).getTime();
+      return new Date(b.last_read_at).getTime() - new Date(a.last_read_at).getTime();
+    });
+  }, [books, searchQuery, sortMode]);
+
   useEffect(() => {
-    if (isGuest && books.length > 0 && !sessionStorage.getItem('nudge_dismissed')) {
-      setShowNudge(true);
-      // Re-render Google button into nudge slot once it's in the DOM
-      setTimeout(() => onInitGoogleAuth(), 150);
-    } else if (!isGuest) {
-      setShowNudge(false);
+    if (user?.id.startsWith('guest_') && googleClientId) {
+      const timer = window.setTimeout(onInitGoogleAuth, 100);
+      return () => window.clearTimeout(timer);
     }
-  }, [isGuest, books.length, onInitGoogleAuth]);
+  }, [googleClientId, onInitGoogleAuth, user]);
 
-  // Trigger Google Login Button rendering if not logged in
-  useEffect(() => {
-    if (user?.id === 'guest' && googleClientId) {
-      onInitGoogleAuth();
-    }
-  }, [user, googleClientId, onInitGoogleAuth]);
-
-  // Handle drag events
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = () => {
-    setIsDragging(false);
-  };
-
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      await processFile(files[0]);
-    }
-  };
-
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      await processFile(files[0]);
-    }
-  };
-
-  // Helper to resize image using Canvas for covers
-  const createThumbnailBlob = (imageBlob: Blob): Promise<Blob> => {
-    return new Promise((resolve) => {
+  const createThumbnailBlob = (imageBlob: Blob): Promise<Blob> =>
+    new Promise((resolve) => {
       const img = new Image();
       img.src = URL.createObjectURL(imageBlob);
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const maxDim = 320;
-        let w = img.width;
-        let h = img.height;
-        if (w > h) {
-          if (w > maxDim) {
-            h = Math.round((h * maxDim) / w);
-            w = maxDim;
-          }
-        } else {
-          if (h > maxDim) {
-            w = Math.round((w * maxDim) / h);
-            h = maxDim;
-          }
-        }
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, w, h);
-          canvas.toBlob((blob) => {
-            if (blob) resolve(blob);
-            else resolve(imageBlob);
-          }, 'image/jpeg', 0.85);
-        } else {
-          resolve(imageBlob);
-        }
+        const scale = Math.min(1, 320 / Math.max(img.width, img.height));
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const context = canvas.getContext('2d');
+        if (!context) return resolve(imageBlob);
+        context.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => resolve(blob ?? imageBlob), 'image/jpeg', 0.85);
       };
       img.onerror = () => resolve(imageBlob);
     });
-  };
 
-  // Extract pages and render page 1 as cover
   const processFile = async (file: File) => {
     const isPdf = file.name.toLowerCase().endsWith('.pdf');
-    const isManga = file.name.toLowerCase().endsWith('.cbz') || file.name.toLowerCase().endsWith('.zip');
-
+    const isManga = /\.(cbz|zip)$/i.test(file.name);
     if (!isPdf && !isManga) {
       alert('Supported formats: PDF, CBZ, and ZIP manga archives.');
       return;
@@ -134,417 +175,269 @@ export default function Dashboard({
 
     setUploadStatus('Analyzing document...');
     setUploadProgress(10);
-
     try {
       const fileBuffer = await file.arrayBuffer();
       let totalPages = 1;
       let coverBlob: Blob | null = null;
-      const title = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
-
       if (isPdf) {
-        // PDF Cover extraction
         const pdf = await pdfjsLib.getDocument({ data: fileBuffer }).promise;
         totalPages = pdf.numPages;
-        
-        // Render first page as Cover
         const page = await pdf.getPage(1);
         const viewport = page.getViewport({ scale: 0.6 });
         const canvas = document.createElement('canvas');
         canvas.width = viewport.width;
         canvas.height = viewport.height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          await page.render({ canvasContext: ctx, viewport }).promise;
+        const context = canvas.getContext('2d');
+        if (context) {
+          await page.render({ canvasContext: context, viewport }).promise;
           coverBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
         }
       } else {
-        // ZIP/CBZ Cover extraction
         const zip = await JSZip.loadAsync(fileBuffer);
-        const fileNames = Object.keys(zip.files);
-        // Find all image files
-        const imageExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'];
-        const imageFiles = fileNames
-          .filter((name) => imageExtensions.some((ext) => name.toLowerCase().endsWith(ext)) && !zip.files[name].dir)
-          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
-
-        if (imageFiles.length === 0) {
-          throw new Error('No images found in CBZ/ZIP archive');
-        }
-
-        totalPages = imageFiles.length;
-        
-        // Extract first image
-        const firstImageFile = zip.files[imageFiles[0]];
-        const imageBlobRaw = await firstImageFile.async('blob');
-        coverBlob = await createThumbnailBlob(imageBlobRaw);
+        const images = Object.keys(zip.files)
+          .filter((name) => /\.(jpe?g|png|webp|gif|bmp)$/i.test(name) && !zip.files[name].dir)
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        if (!images.length) throw new Error('No images found in the archive.');
+        totalPages = images.length;
+        coverBlob = await createThumbnailBlob(await zip.files[images[0]].async('blob'));
       }
 
       setUploadStatus('Uploading and compressing file...');
       setUploadProgress(40);
-
-      // Construct Multipart form upload
       const formData = new FormData();
-      formData.append('title', title);
+      formData.append('title', file.name.replace(/\.[^.]+$/, ''));
       formData.append('type', isPdf ? 'pdf' : 'cbz');
-      formData.append('total_pages', totalPages.toString());
+      formData.append('total_pages', String(totalPages));
       formData.append('file', file);
-      if (coverBlob) {
-        formData.append('cover', coverBlob, 'cover.jpg');
-      }
-      if (isPdf && convertToEpub) {
-        formData.append('convert_to_epub', 'true');
-      }
+      if (coverBlob) formData.append('cover', coverBlob, 'cover.jpg');
+      if (isPdf && convertToEpub) formData.append('convert_to_epub', 'true');
 
-      // XHR upload to capture progress
       const xhr = new XMLHttpRequest();
       xhr.open('POST', '/api/books');
-      
-      const jwtToken = localStorage.getItem('reader_jwt');
-      if (jwtToken) {
-        xhr.setRequestHeader('Authorization', `Bearer ${jwtToken}`);
-      }
-
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          const percent = 40 + Math.round((e.loaded / e.total) * 55);
-          setUploadProgress(percent);
-        }
+      const token = localStorage.getItem('reader_jwt');
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) setUploadProgress(40 + Math.round((event.loaded / event.total) * 55));
       };
-
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
-          const responseBook = JSON.parse(xhr.responseText);
-          onUploadSuccess(responseBook);
-          setUploadStatus('Upload complete!');
+          onUploadSuccess(JSON.parse(xhr.responseText));
+          setUploadStatus('Upload complete');
           setUploadProgress(100);
-          setTimeout(() => {
+          window.setTimeout(() => {
             setUploadStatus('');
             setUploadProgress(0);
-          }, 2000);
+          }, 1800);
         } else {
           setUploadStatus('');
-          alert('Upload failed: ' + xhr.responseText);
+          alert(`Upload failed: ${xhr.responseText}`);
         }
       };
-
       xhr.onerror = () => {
         setUploadStatus('');
         alert('An error occurred during file upload.');
       };
-
       xhr.send(formData);
-
-    } catch (err) {
-      console.error(err);
+    } catch (error) {
       setUploadStatus('');
-      alert(err instanceof Error ? err.message : 'Error processing document.');
+      alert(error instanceof Error ? error.message : 'Error processing document.');
     }
   };
 
-  // Filter books based on search query and tabs
-  const filteredBooks = books.filter((book) => {
-    const matchesSearch = book.title.toLowerCase().includes(searchQuery.toLowerCase());
-    if (!matchesSearch) return false;
-
-    if (activeTab === 'pdf') return book.type === 'pdf' || book.type === 'epub';
-    if (activeTab === 'cbz') return book.type === 'cbz';
-    if (activeTab === 'completed') return book.current_page >= book.total_pages;
-    
-    return true;
-  });
+  const displayName = user?.name?.split(' ')[0] || 'Reader';
 
   return (
-    <div className="flex flex-col gap-8 max-w-[1200px] w-full mx-auto">
-      
-      {/* Upload Zone */}
-      <section 
-        className={cn(
-          "glass-panel border-2 border-dashed border-[var(--border-glass)] p-10 text-center cursor-pointer relative overflow-hidden flex flex-col items-center justify-center gap-4 transition-all duration-300",
-          isDragging ? "border-[var(--accent-primary)] shadow-[var(--shadow-neon-purple)] bg-[rgba(139,92,246,0.05)]" : ""
-        )}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
-      >
-        <input 
-          type="file" 
-          ref={fileInputRef} 
-          className="hidden" 
-          accept=".pdf,.cbz,.zip"
-          onChange={handleFileSelect}
-        />
-        
-        {uploadStatus ? (
-          <div className="w-full max-w-[300px] flex flex-col gap-3">
-            <span className="text-sm font-medium text-[var(--text-primary)]">
-              {uploadStatus}
-            </span>
-            <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-gradient-to-r from-[var(--accent-primary)] to-[var(--accent-secondary)] transition-all duration-200"
-                style={{ width: `${uploadProgress}%` }} 
-              />
-            </div>
-            <span className="text-xs text-[var(--text-muted)]">
-              {uploadProgress}%
-            </span>
-          </div>
-        ) : (
-          <>
-            <div className="p-4 rounded-full bg-[rgba(139,92,246,0.06)] text-[var(--accent-primary)] inline-flex pulse-glow">
-              <Upload size={32} />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold mb-1.5 text-white">Drag & Drop books or manga here</h3>
-              <p className="text-xs text-[var(--text-secondary)]">Supports PDF documents, .CBZ and .ZIP manga archives</p>
-            </div>
-            <button className="btn-primary" type="button" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}>
-              <Plus size={16} /> Choose File
-            </button>
-            <div 
-              onClick={(e) => e.stopPropagation()} 
-              className="mt-2 flex items-center gap-2 text-xs text-[var(--text-secondary)] cursor-default"
-            >
-              <input 
-                type="checkbox" 
-                id="epub-convert-checkbox" 
-                checked={convertToEpub} 
-                onChange={(e) => setConvertToEpub(e.target.checked)}
-                className="cursor-pointer accent-[var(--accent-primary)] w-4 h-4"
-              />
-              <label htmlFor="epub-convert-checkbox" className="cursor-pointer select-none">
-                Convert PDF uploads to EPUB format
-              </label>
-            </div>
-          </>
-        )}
-      </section>
-
-      {/* Save Your Library Nudge Banner (guests with books only) */}
-      <AnimatePresence>
-        {showNudge && (
-          <motion.div
-            initial={{ opacity: 0, y: -12, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -12, scale: 0.98 }}
-            transition={{ duration: 0.3, ease: 'easeOut' }}
-            className="relative overflow-hidden rounded-2xl px-6 py-4 flex items-center gap-4"
-            style={{
-              background: 'linear-gradient(135deg, rgba(139,92,246,0.25) 0%, rgba(59,130,246,0.2) 100%)',
-              border: '1px solid rgba(139,92,246,0.35)',
-              boxShadow: '0 0 30px rgba(139,92,246,0.12)'
-            }}
-          >
-            {/* Decorative glow blob */}
-            <div style={{
-              position: 'absolute', right: '-40px', top: '-40px',
-              width: '160px', height: '160px',
-              background: 'radial-gradient(circle, rgba(139,92,246,0.3) 0%, transparent 70%)',
-              pointerEvents: 'none'
-            }} />
-
-            <div className="p-2.5 rounded-xl flex-shrink-0" style={{ background: 'rgba(139,92,246,0.2)' }}>
-              <Sparkles size={22} className="text-[var(--accent-primary)]" />
-            </div>
-
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-white leading-tight">
-                Your books are saved for 7 days — sign in to keep them forever!
-              </p>
-              <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                Create a free account and your entire library will be transferred automatically.
-              </p>
-            </div>
-
-            <div className="flex-shrink-0 flex items-center gap-3">
-              {googleClientId && (
-                <div id="google-signin-btn-nudge" className="inline-block" />
-              )}
-              <button
-                onClick={() => {
-                  sessionStorage.setItem('nudge_dismissed', '1');
-                  setShowNudge(false);
-                }}
-                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-white transition-colors"
-                title="Dismiss"
-              >
-                <X size={16} />
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Catalog Filters and Search */}
-      <section className="flex flex-col gap-5">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          
-          {/* Tabs */}
-          <div className="glass-panel p-1 flex gap-1 rounded-xl">
-            {(['all', 'pdf', 'cbz', 'completed'] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={cn(
-                  "px-4 py-2 rounded-lg text-xs md:text-sm font-medium capitalize border transition-all duration-200",
-                  activeTab === tab 
-                    ? "bg-white/5 text-white border-[var(--border-glass)]" 
-                    : "bg-transparent text-[var(--text-secondary)] border-transparent hover:text-white"
-                )}
-              >
-                {tab === 'cbz' ? 'Manga (CBZ)' : tab === 'pdf' ? 'Books (PDF/EPUB)' : tab}
-              </button>
-            ))}
-          </div>
-
-          {/* Search bar */}
-          <div className="glass-panel flex items-center px-4 py-2 gap-2 w-full max-w-[300px]">
-            <Search size={16} className="text-[var(--text-muted)]" />
-            <input 
-              type="text" 
-              placeholder="Search library..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full border-none bg-transparent text-white text-sm outline-none placeholder:text-[var(--text-muted)]"
-            />
-          </div>
+    <div className="flex min-h-screen w-full items-start bg-neutral-0 text-default-font">
+      <aside className="sticky top-0 flex h-screen w-16 flex-none flex-col items-center gap-1 border-r border-neutral-border bg-neutral-0 py-4 mobile:hidden">
+        <div className="mb-2 flex w-full justify-center border-b border-neutral-border pb-4">
+          <FeatherBookOpen className="text-heading-2 font-heading-2 text-brand-600" />
         </div>
+        <RailItem active icon={<FeatherLayout />} label="Dashboard" />
+        <RailItem icon={<FeatherBook />} label="Library" />
+        <RailItem icon={<FeatherBookOpen />} label="Continue Reading" badge={inProgress.length} />
+        <RailItem icon={<FeatherUploadCloud />} label="Uploads" />
+        <div className="mt-1 flex w-full flex-col items-center gap-1 border-t border-neutral-border pt-2">
+          <RailItem icon={<FeatherBookOpenCheck />} label="Completed" />
+          <RailItem icon={<FeatherHeart />} label="Favorites" />
+          <RailItem icon={<FeatherFiles />} label="All PDFs" />
+        </div>
+      </aside>
 
-        {/* Shelf Books Grid */}
-        <AnimatePresence mode="popLayout">
-          {filteredBooks.length > 0 ? (
-            <motion.div 
-              layout
-              className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6"
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-20 flex w-full items-center gap-4 border-b border-neutral-border bg-neutral-0/95 px-6 py-3 backdrop-blur mobile:px-4">
+          <IconButton className="hidden mobile:flex" icon={<FeatherMenu />} aria-label="Open navigation" />
+          <TextField className="h-auto max-w-[320px] flex-1 mobile:max-w-none" variant="filled" icon={<FeatherSearch />}>
+            <TextField.Input
+              type="search"
+              placeholder="Search books, manga, PDFs..."
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+            />
+          </TextField>
+          <div className="flex flex-1 items-center justify-end gap-3">
+            <Select
+              className="mobile:hidden"
+              variant="filled"
+              placeholder="Sort by"
+              value={sortMode}
+              onValueChange={(value) => setSortMode(value as SortMode)}
             >
-              {filteredBooks.map((book) => {
-                const progressPercentage = book.total_pages > 0 
-                  ? Math.round((book.current_page / book.total_pages) * 100)
-                  : 0;
-
-                return (
-                  <motion.div 
-                    layout
-                    key={book.id}
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    transition={{ duration: 0.25 }}
-                    className="glass-panel group flex flex-col overflow-hidden relative h-[350px] transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:border-[var(--border-glass-active)]"
-                  >
-                    {/* Cover Section */}
-                    <div className="flex-1 relative overflow-hidden bg-[#0f0f15] flex items-center justify-center">
-                      {book.cover_path ? (
-                        <img 
-                          src={book.cover_path} 
-                          alt={book.title} 
-                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
-                        />
-                      ) : (
-                        /* Fallback Cover Gradient */
-                        <div 
-                          className={cn(
-                            "w-full h-full flex flex-col justify-center items-center p-4 text-center",
-                            book.type === 'pdf' 
-                              ? 'bg-gradient-to-br from-[#4c1d95] to-[#1e1b4b]' 
-                              : 'bg-gradient-to-br from-[#0f766e] to-[#0f172a]'
-                          )}
-                        >
-                          {book.type === 'pdf' ? (
-                            <FileText size={42} className="text-[var(--accent-primary)] mb-2" />
-                          ) : (
-                            <BookOpen size={42} className="text-[var(--accent-secondary)] mb-2" />
-                          )}
-                          <span className="text-xs font-semibold text-white/70 block max-w-full truncate">{book.title}</span>
-                        </div>
-                      )}
-
-                      {/* Format Tag */}
-                      <div 
-                        className={cn(
-                          "absolute top-2.5 left-2.5 px-2 py-1 rounded text-[10px] font-semibold uppercase tracking-wider text-white",
-                          book.type === 'pdf' ? 'bg-[var(--accent-primary)]/90' : 'bg-[var(--accent-secondary)]/90'
-                        )}
-                      >
-                        {book.type === 'pdf' ? 'pdf' : 'manga'}
-                      </div>
-
-                      {/* Actions Hover Overlay */}
-                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                        <button 
-                          onClick={() => onSelectBook(book)}
-                          className="btn-primary py-2.5 px-4 rounded-full"
-                        >
-                          <Play size={16} fill="white" /> Read
-                        </button>
-                        {book.type === 'pdf' && (
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); onConvertBook(book.id); }}
-                            className="bg-[var(--accent-primary)]/15 border border-[var(--accent-primary)]/30 text-[var(--accent-primary)] p-2.5 rounded-full hover:bg-[var(--accent-primary)]/30 transition-all duration-200"
-                            title="Convert PDF to EPUB"
-                          >
-                            <RefreshCw size={16} />
-                          </button>
-                        )}
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); onDeleteBook(book.id); }}
-                          className="bg-red-500/15 border border-red-500/30 text-red-500 p-2.5 rounded-full hover:bg-red-500/30 transition-all duration-200"
-                          title="Delete Book"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Metadata Section */}
-                    <div className="p-4 flex flex-col gap-2 border-t border-[var(--border-glass)]">
-                      <h4 
-                        className="text-sm font-semibold truncate text-white"
-                        title={book.title}
-                      >
-                        {book.title}
-                      </h4>
-                      
-                      {/* Progress tracking */}
-                      <div className="flex flex-col gap-1">
-                        <div className="flex justify-between text-[10px] text-[var(--text-secondary)]">
-                          <span>Page {book.current_page} of {book.total_pages}</span>
-                          <span>{progressPercentage}%</span>
-                        </div>
-                        <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
-                          <div 
-                            className={cn(
-                              "h-full rounded-full transition-all duration-300",
-                              progressPercentage >= 100 ? 'bg-green-500' : 'bg-[var(--accent-primary)]'
-                            )}
-                            style={{ width: `${progressPercentage}%` }} 
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </motion.div>
-          ) : (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="glass-panel p-16 text-center flex flex-col items-center gap-4"
-            >
-              <Book size={48} className="text-[var(--text-muted)]" />
-              <div>
-                <h3 className="text-lg font-semibold text-white mb-1">No books matching filters</h3>
-                <p className="text-xs text-[var(--text-secondary)]">
-                  {books.length === 0 ? 'Upload a PDF or CBZ file to start reading.' : 'Try changing your search query or shelf tabs.'}
-                </p>
+              <Select.Item value="recent">Recently Read</Select.Item>
+              <Select.Item value="title">Title A-Z</Select.Item>
+              <Select.Item value="progress">Progress</Select.Item>
+              <Select.Item value="added">Date Added</Select.Item>
+            </Select>
+            <ToggleGroup className="mobile:hidden">
+              <div onClick={() => setViewMode('grid')}>
+                <ToggleGroup.Item icon={<FeatherGrid />} aria-label="Grid view" aria-checked={viewMode === 'grid'} />
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </section>
+              <div onClick={() => setViewMode('list')}>
+                <ToggleGroup.Item icon={<FeatherList />} aria-label="List view" aria-checked={viewMode === 'list'} />
+              </div>
+            </ToggleGroup>
+            <Avatar size="small" image={user?.picture}>{displayName.slice(0, 1)}</Avatar>
+            <button type="button" title="Sign out" aria-label="Sign out" onClick={onSignOut} className="text-subtext-color hover:text-default-font">
+              <FeatherSettings />
+            </button>
+            <IconButton icon={<FeatherBell />} aria-label="Notifications" />
+          </div>
+        </header>
+
+        <main className="flex w-full flex-col gap-10 px-8 py-8 mobile:gap-8 mobile:px-4 mobile:py-6">
+          <section className="flex w-full items-center justify-between gap-4">
+            <div className="flex flex-col gap-1">
+              <h1 className="text-heading-1 font-heading-1 mobile:text-heading-2 mobile:font-heading-2">Good evening, {displayName}</h1>
+              <p className="text-body font-body text-subtext-color">
+                You have {inProgress.length} {inProgress.length === 1 ? 'book' : 'books'} in progress. Pick up where you left off.
+              </p>
+            </div>
+            <Button className="mobile:hidden" variant="neutral-secondary" icon={<FeatherUploadCloud />} onClick={() => fileInputRef.current?.click()}>
+              Upload File
+            </Button>
+            <input
+              ref={fileInputRef}
+              className="hidden"
+              type="file"
+              accept=".pdf,.cbz,.zip"
+              onChange={(event) => event.target.files?.[0] && processFile(event.target.files[0])}
+            />
+          </section>
+
+          {resumeBook ? (
+            <section className="flex w-full flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-heading-3 font-heading-3">Pick Up Where You Left Off</h2>
+                <Button variant="neutral-tertiary" size="small" iconRight={<FeatherArrowRight />}>All In Progress</Button>
+              </div>
+              <div className="flex w-full items-start gap-6 rounded-lg border border-neutral-200 bg-neutral-50 px-6 py-6 mobile:flex-col mobile:px-4 mobile:py-4">
+                <Cover book={resumeBook} className="h-52 w-36 flex-none rounded-md object-cover shadow-md mobile:h-44 mobile:w-32" />
+                <div className="flex min-w-0 flex-1 flex-col gap-4 py-1">
+                  <div>
+                    <h3 className="text-heading-2 font-heading-2 mobile:text-heading-3 mobile:font-heading-3">{resumeBook.title}</h3>
+                    <p className="text-body font-body text-subtext-color">{resumeBook.type.toUpperCase()}</p>
+                  </div>
+                  <div className="flex w-full max-w-[400px] flex-col gap-2">
+                    <div className="flex items-center gap-3">
+                      <Progress value={progressFor(resumeBook)} />
+                      <span className="text-caption-bold font-caption-bold text-subtext-color">{progressFor(resumeBook)}%</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-4">
+                      <span className="flex items-center gap-1.5 text-caption font-caption text-subtext-color"><FeatherBookOpen /> Page {resumeBook.current_page} of {resumeBook.total_pages}</span>
+                      <span className="flex items-center gap-1.5 text-caption font-caption text-subtext-color"><FeatherClock /> {formatRelativeDate(resumeBook.last_read_at)}</span>
+                    </div>
+                  </div>
+                  <Button className="mt-1 self-start" icon={<FeatherPlay />} onClick={() => onSelectBook(resumeBook)}>Resume Reading</Button>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          <section className="grid w-full grid-cols-3 gap-4 mobile:grid-cols-1 mobile:gap-3">
+            <Metric label="Books in Progress" value={inProgress.length} detail={`of ${books.length} total`} />
+            <Metric label="Pages Read" value={books.reduce((sum, book) => sum + book.current_page, 0)} trend="Current library" />
+            <Metric label="Completed" value={completed.length} detail="books total" />
+          </section>
+
+          <section className="flex w-full flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-heading-3 font-heading-3">Recently Read</h2>
+              <Button variant="neutral-tertiary" size="small" iconRight={<FeatherArrowRight />}>View All</Button>
+            </div>
+            {visibleBooks.length ? (
+              <div className={viewMode === 'grid' ? 'grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6' : 'flex flex-col gap-3'}>
+                {visibleBooks.map((book) => (
+                  <article
+                    key={book.id}
+                    className={viewMode === 'grid' ? 'group flex min-w-0 flex-col gap-3' : 'group flex items-center gap-4 rounded-lg border border-neutral-200 bg-neutral-50 p-3'}
+                  >
+                    <button type="button" className="relative text-left" onClick={() => onSelectBook(book)}>
+                      <Cover book={book} className={viewMode === 'grid' ? 'h-56 w-full rounded-md object-cover shadow-md mobile:h-48' : 'h-20 w-14 rounded-md object-cover shadow-sm'} />
+                      <Badge className="absolute bottom-2 right-2" variant={progressFor(book) >= 100 ? 'success' : 'neutral'}>{progressFor(book)}%</Badge>
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <button type="button" className="line-clamp-2 w-full text-left text-caption-bold font-caption-bold" onClick={() => onSelectBook(book)}>{book.title}</button>
+                      <p className="mt-1 truncate text-caption font-caption text-subtext-color">{book.type.toUpperCase()} · {book.current_page}/{book.total_pages} pages</p>
+                    </div>
+                    <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                      {book.type === 'pdf' ? <IconButton icon={<RefreshCw size={14} />} aria-label={`Convert ${book.title} to EPUB`} onClick={() => onConvertBook(book.id)} /> : null}
+                      <IconButton icon={<Trash2 size={14} />} aria-label={`Delete ${book.title}`} onClick={() => onDeleteBook(book.id)} />
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center">
+                <FeatherBookOpen className="text-heading-1 font-heading-1 text-neutral-400" />
+                <div>
+                  <h3 className="text-body-bold font-body-bold">{books.length ? 'No matching books' : 'Your library is empty'}</h3>
+                  <p className="text-caption font-caption text-subtext-color">{books.length ? 'Try a different search.' : 'Upload a PDF or manga archive to start reading.'}</p>
+                </div>
+                {!books.length ? <Button icon={<FeatherUploadCloud />} onClick={() => fileInputRef.current?.click()}>Upload your first book</Button> : null}
+              </div>
+            )}
+          </section>
+
+          <section className="relative flex w-full items-center justify-between gap-4 overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 px-5 py-4 mobile:flex-col mobile:items-start">
+            <div>
+              <h2 className="text-body-bold font-body-bold">New Uploads</h2>
+              <p className="text-caption font-caption text-subtext-color">Add PDF, CBZ, or ZIP files to your library.</p>
+            </div>
+            <div className="flex items-center gap-3 mobile:w-full mobile:flex-col mobile:items-stretch">
+              <label className="flex items-center gap-2 text-caption font-caption text-subtext-color">
+                <input type="checkbox" checked={convertToEpub} onChange={(event) => setConvertToEpub(event.target.checked)} />
+                Convert PDF uploads to EPUB
+              </label>
+              <Button icon={<FeatherUploadCloud />} loading={Boolean(uploadStatus)} onClick={() => fileInputRef.current?.click()}>
+                {uploadStatus || 'Upload'}
+              </Button>
+            </div>
+            {uploadStatus ? <Progress className="absolute left-0 bottom-0" value={uploadProgress} /> : null}
+          </section>
+
+          {user?.id.startsWith('guest_') && googleClientId ? (
+            <section className="flex items-center justify-between gap-4 rounded-lg border border-brand-200 bg-brand-50 px-5 py-4 mobile:flex-col mobile:items-start">
+              <div>
+                <h2 className="text-body-bold font-body-bold">Save your library permanently</h2>
+                <p className="text-caption font-caption text-subtext-color">Sign in and your guest library will transfer automatically.</p>
+              </div>
+              <div id="google-signin-btn-nudge" />
+            </section>
+          ) : null}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+function Metric({ label, value, detail, trend }: { label: string; value: number; detail?: string; trend?: string }) {
+  return (
+    <div className="flex flex-col gap-1 rounded-lg border border-neutral-200 bg-neutral-50 px-5 py-4">
+      <span className="text-caption font-caption text-subtext-color">{label}</span>
+      <div className="flex items-end gap-2">
+        <span className="text-heading-1 font-heading-1">{value}</span>
+        {trend ? <span className="flex items-center gap-1 pb-1 text-caption font-caption text-success-600"><FeatherTrendingUp /> {trend}</span> : null}
+        {detail ? <span className="pb-1 text-caption font-caption text-subtext-color">{detail}</span> : null}
+      </div>
     </div>
   );
 }

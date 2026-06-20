@@ -1,0 +1,171 @@
+@theme {
+  /* Default Colors */
+  --color-brand-primary: var(--color-brand-600);
+  --color-default-font: var(--color-neutral-900);
+  --color-subtext-color: var(--color-neutral-500);
+  --color-neutral-border: var(--color-neutral-200);
+  --color-black: var(--color-neutral-0);
+  --color-default-background: var(--color-neutral-0);
+
+  /* brand */
+  --color-brand-50: rgb(16 36 62);
+  --color-brand-100: rgb(16 42 76);
+  --color-brand-200: rgb(15 48 88);
+  --color-brand-300: rgb(13 56 104);
+  --color-brand-400: rgb(10 68 129);
+  --color-brand-500: rgb(9 84 165);
+  --color-brand-600: rgb(0 145 255);
+  --color-brand-700: rgb(54 158 255);
+  --color-brand-800: rgb(82 169 255);
+  --color-brand-900: rgb(234 246 255);
+
+  /* neutral */
+  --color-neutral-0: rgb(2 6 23);
+  --color-neutral-50: rgb(15 23 42);
+  --color-neutral-100: rgb(30 41 59);
+  --color-neutral-200: rgb(51 65 85);
+  --color-neutral-300: rgb(71 85 105);
+  --color-neutral-400: rgb(100 116 139);
+  --color-neutral-500: rgb(148 163 184);
+  --color-neutral-600: rgb(203 213 225);
+  --color-neutral-700: rgb(226 232 240);
+  --color-neutral-800: rgb(241 245 249);
+  --color-neutral-900: rgb(248 250 252);
+  --color-neutral-950: rgb(255 255 255);
+
+  /* error */
+  --color-error-50: rgb(60 24 26);
+  --color-error-100: rgb(72 26 29);
+  --color-error-200: rgb(84 27 31);
+  --color-error-300: rgb(103 30 34);
+  --color-error-400: rgb(130 32 37);
+  --color-error-500: rgb(170 36 41);
+  --color-error-600: rgb(229 72 77);
+  --color-error-700: rgb(242 85 90);
+  --color-error-800: rgb(255 99 105);
+  --color-error-900: rgb(254 236 238);
+
+  /* warning */
+  --color-warning-50: rgb(57 26 3);
+  --color-warning-100: rgb(68 31 4);
+  --color-warning-200: rgb(79 35 5);
+  --color-warning-300: rgb(95 42 6);
+  --color-warning-400: rgb(118 50 5);
+  --color-warning-500: rgb(148 62 0);
+  --color-warning-600: rgb(247 104 8);
+  --color-warning-700: rgb(255 128 43);
+  --color-warning-800: rgb(255 139 62);
+  --color-warning-900: rgb(254 234 221);
+
+  /* success */
+  --color-success-50: rgb(19 40 25);
+  --color-success-100: rgb(22 48 29);
+  --color-success-200: rgb(25 57 33);
+  --color-success-300: rgb(29 68 39);
+  --color-success-400: rgb(36 85 48);
+  --color-success-500: rgb(47 110 59);
+  --color-success-600: rgb(70 167 88);
+  --color-success-700: rgb(85 180 103);
+  --color-success-800: rgb(99 193 116);
+  --color-success-900: rgb(229 251 235);
+
+  /* Fonts */
+  --text-caption: 12px;
+  --text-caption--font-weight: 400;
+  --text-caption--letter-spacing: 0em;
+  --text-caption--line-height: 16px;
+  --text-caption-bold: 12px;
+  --text-caption-bold--font-weight: 500;
+  --text-caption-bold--letter-spacing: 0em;
+  --text-caption-bold--line-height: 16px;
+  --text-body: 14px;
+  --text-body--font-weight: 400;
+  --text-body--letter-spacing: 0em;
+  --text-body--line-height: 20px;
+  --text-body-bold: 14px;
+  --text-body-bold--font-weight: 500;
+  --text-body-bold--letter-spacing: 0em;
+  --text-body-bold--line-height: 20px;
+  --text-heading-3: 16px;
+  --text-heading-3--font-weight: 600;
+  --text-heading-3--letter-spacing: 0em;
+  --text-heading-3--line-height: 20px;
+  --text-heading-2: 20px;
+  --text-heading-2--font-weight: 600;
+  --text-heading-2--letter-spacing: 0em;
+  --text-heading-2--line-height: 24px;
+  --text-heading-1: 30px;
+  --text-heading-1--font-weight: 600;
+  --text-heading-1--letter-spacing: 0em;
+  --text-heading-1--line-height: 36px;
+  --text-monospace-body: 14px;
+  --text-monospace-body--font-weight: 400;
+  --text-monospace-body--letter-spacing: 0em;
+  --text-monospace-body--line-height: 20px;
+
+  /* Font families */
+  --font-caption: Montserrat;
+  --font-caption-bold: Montserrat;
+  --font-body: Montserrat;
+  --font-body-bold: Montserrat;
+  --font-heading-3: Montserrat;
+  --font-heading-2: Montserrat;
+  --font-heading-1: Montserrat;
+  --font-monospace-body: monospace;
+
+  /* Box shadows */
+  --shadow-sm: 0px 1px 2px 0px rgb(0 0 0 / 0.05);
+  --shadow-default: 0px 1px 2px 0px rgb(0 0 0 / 0.05);
+  --shadow-md: 0px 4px 16px -2px rgb(0 0 0 / 0.08),
+    0px 2px 4px -1px rgb(0 0 0 / 0.08);
+  --shadow-lg: 0px 12px 32px -4px rgb(0 0 0 / 0.08),
+    0px 4px 8px -2px rgb(0 0 0 / 0.08);
+  --shadow-overlay: 0px 12px 32px -4px rgb(0 0 0 / 0.08),
+    0px 4px 8px -2px rgb(0 0 0 / 0.08);
+
+  /* Border radiuses */
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-full: 9999px;
+
+  /* Spacing */
+  --spacing-112: 28rem;
+  --spacing-144: 36rem;
+  --spacing-192: 48rem;
+  --spacing-256: 64rem;
+  --spacing-320: 80rem;
+}
+
+/* Container */
+@utility container {
+  padding-left: 16px;
+  padding-right: 16px;
+
+  @media (width >= theme(--breakpoint-sm)) {
+    padding-left: calc((100vw + 16px - 640px) / 2);
+    padding-right: calc((100vw + 16px - 640px) / 2);
+  }
+
+  @media (width >= theme(--breakpoint-md)) {
+    padding-left: calc((100vw + 16px - 768px) / 2);
+    padding-right: calc((100vw + 16px - 768px) / 2);
+  }
+
+  @media (width >= theme(--breakpoint-lg)) {
+    padding-left: calc((100vw + 16px - 1024px) / 2);
+    padding-right: calc((100vw + 16px - 1024px) / 2);
+  }
+
+  @media (width >= theme(--breakpoint-xl)) {
+    padding-left: calc((100vw + 16px - 1280px) / 2);
+    padding-right: calc((100vw + 16px - 1280px) / 2);
+  }
+
+  @media (width >= theme(--breakpoint-2xl)) {
+    padding-left: calc((100vw + 16px - 1536px) / 2);
+    padding-right: calc((100vw + 16px - 1536px) / 2);
+  }
+}
+
+@custom-variant mobile (@media (max-width: 767px));

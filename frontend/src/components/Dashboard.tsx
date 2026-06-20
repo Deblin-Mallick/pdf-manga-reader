@@ -289,10 +289,10 @@ export default function Dashboard({
             </Select>
             <ToggleGroup className="mobile:hidden">
               <div onClick={() => setViewMode('grid')}>
-                <ToggleGroup.Item icon={<FeatherGrid />} aria-label="Grid view" aria-checked={viewMode === 'grid'} />
+                <ToggleGroup.Item value="grid" icon={<FeatherGrid />} aria-label="Grid view" aria-checked={viewMode === 'grid'} />
               </div>
               <div onClick={() => setViewMode('list')}>
-                <ToggleGroup.Item icon={<FeatherList />} aria-label="List view" aria-checked={viewMode === 'list'} />
+                <ToggleGroup.Item value="list" icon={<FeatherList />} aria-label="List view" aria-checked={viewMode === 'list'} />
               </div>
             </ToggleGroup>
             <Avatar size="small" image={user?.picture}>{displayName.slice(0, 1)}</Avatar>

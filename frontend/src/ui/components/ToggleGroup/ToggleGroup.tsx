@@ -11,7 +11,7 @@ import * as SubframeUtils from "../../utils";
 
 export interface ItemProps
   extends React.ComponentProps<typeof SubframeCore.ToggleGroup.Item> {
-  value?: string;
+  value: string;
   disabled?: boolean;
   children?: React.ReactNode;
   icon?: React.ReactNode;

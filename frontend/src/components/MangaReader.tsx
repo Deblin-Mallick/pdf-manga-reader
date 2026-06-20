@@ -1,6 +1,21 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, Layout, AlignJustify, Eye, Sun, Undo } from 'lucide-react';
+import JSZip from 'jszip';
 import { Book } from '../App';
+import { Avatar, Badge, Button, IconButton, Select, Tabs, ToggleGroup } from '../ui';
+import * as SubframeCore from "@subframe/core";
+import {
+  FeatherArrowLeft,
+  FeatherChevronLeft,
+  FeatherChevronRight,
+  FeatherLayout,
+  FeatherList,
+  FeatherMinus,
+  FeatherPlus,
+  FeatherSettings,
+  FeatherSun,
+  FeatherEye,
+  FeatherUndo,
+} from "@subframe/core";
 
 interface MangaReaderProps {
   book: Book;
@@ -18,6 +33,54 @@ interface MangaReaderProps {
   ) => void;
 }
 
+interface ThemeStyle {
+  bg: string;
+  cardBg: string;
+  text: string;
+  heading: string;
+  hr: string;
+  sidebarBg: string;
+  sidebarText: string;
+  border: string;
+  activeBg: string;
+}
+
+const themeStyles: Record<'light' | 'dark' | 'sepia', ThemeStyle> = {
+  light: {
+    bg: '#F8F6F1',
+    cardBg: '#ffffff',
+    text: '#1f2937',
+    heading: '#0f172a',
+    hr: 'rgba(0,0,0,0.08)',
+    sidebarBg: 'rgba(255, 255, 255, 0.9)',
+    sidebarText: '#374151',
+    border: 'rgba(0,0,0,0.06)',
+    activeBg: 'rgba(0, 0, 0, 0.05)',
+  },
+  dark: {
+    bg: '#09090e',
+    cardBg: '#12121a',
+    text: '#cbd5e1',
+    heading: '#f8fafc',
+    hr: 'rgba(255,255,255,0.06)',
+    sidebarBg: 'rgba(18, 18, 26, 0.95)',
+    sidebarText: '#94a3b8',
+    border: 'rgba(255,255,255,0.06)',
+    activeBg: 'rgba(255, 255, 255, 0.05)',
+  },
+  sepia: {
+    bg: '#F4ECD8',
+    cardBg: '#FDF6E3',
+    text: '#5C4636',
+    heading: '#433422',
+    hr: 'rgba(92,70,54,0.12)',
+    sidebarBg: 'rgba(244, 236, 216, 0.95)',
+    sidebarText: '#5C4636',
+    border: 'rgba(92,70,54,0.08)',
+    activeBg: 'rgba(92, 70, 54, 0.06)',
+  }
+};
+
 export default function MangaReader({
   book,
   token,
@@ -31,7 +94,9 @@ export default function MangaReader({
   const [mediaToken, setMediaToken] = useState<string | null>(null);
   
   const [currentPage, setCurrentPage] = useState(book.current_page || 1);
-  const [viewMode, setViewMode] = useState<string>(book.view_mode || 'single-page'); // single-page, double-page, webtoon
+  const [viewMode, setViewMode] = useState<'single-page' | 'double-page' | 'webtoon'>(
+    (book.view_mode as any) || 'single-page'
+  );
   const [readingDirection, setReadingDirection] = useState<'ltr' | 'rtl'>(book.reading_direction || 'rtl');
   const [brightness, setBrightness] = useState<number>(savedPrefs.brightness ?? 100);
   const [contrast, setContrast] = useState<number>(savedPrefs.contrast ?? 100);
@@ -291,7 +356,7 @@ export default function MangaReader({
             const url = getPageUrl(index);
             // Only render loaded or nearby pages to prevent lag (lazy render)
             if (Math.abs(index - (currentPage - 1)) > 8) {
-              return <div key={index} style={{ height: '500px', backgroundColor: '#09090c', borderBottom: '1px solid var(--border-glass)' }} />;
+              return <div key={index} style={{ height: '500px', backgroundColor: '#09090c' }} />;
             }
             
             return (
@@ -343,16 +408,25 @@ export default function MangaReader({
         {activeUrl ? (
           <img src={activeUrl} alt={`Manga Page ${currentPage}`} style={filterStyle} />
         ) : (
-          <div style={{ width: '40px', height: '40px', borderRadius: '50%', border: '3px solid var(--border-glass)', borderTopColor: 'var(--accent-primary)', animation: 'spin 1s linear infinite' }} />
+          <div className="h-10 w-10 animate-spin rounded-full border-3 border-solid border-brand-200 border-t-brand-600" />
         )}
       </div>
     );
   };
 
+  const activeTheme = themeStyles.dark;
+  const percentComplete = Math.round(((currentPage) / (pages.length || 1)) * 100);
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: 'calc(100vh - 120px)', position: 'relative' }}>
-      
-      {/* Hidden prefetch elements for next page to make single/double page turns instant */}
+    <div 
+      className="flex h-full w-full items-start"
+      style={{
+        backgroundColor: activeTheme.bg,
+        color: activeTheme.text,
+        transition: 'all 0.3s ease'
+      }}
+    >
+      {/* Hidden prefetch elements for next page to make page turns instant */}
       {!loading && viewMode !== 'webtoon' && currentPage < pages.length && (
         <img src={getPageUrl(currentPage)} style={{ display: 'none' }} alt="" />
       )}
@@ -360,212 +434,244 @@ export default function MangaReader({
         <img src={getPageUrl(currentPage + 1)} style={{ display: 'none' }} alt="" />
       )}
 
-      {/* Top Header Controls */}
-      <div className="glass-panel" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 24px', marginBottom: '16px', borderRadius: '12px', zIndex: 5 }}>
-        <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }} className="hover-white">
-          <ArrowLeft size={18} /> Back
-        </button>
-        <span style={{ fontSize: '0.95rem', fontWeight: 500, color: '#fff', flex: 1, minWidth: 0, maxWidth: '40%', textAlign: 'center', margin: '0 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {book.title}
-        </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-          <span>Page</span>
-          <input 
-            type="number" 
-            value={currentPage}
-            onChange={(e) => {
-              const val = parseInt(e.target.value);
-              if (val >= 1 && val <= pages.length) {
-                setCurrentPage(val);
-                syncProgress(val);
-              }
-            }}
-            style={{ width: '60px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-glass)', backgroundColor: 'rgba(255,255,255,0.03)', color: '#fff', textAlign: 'center' }}
+      {/* MAIN READING WORKSPACE */}
+      <div className="flex grow shrink-0 basis-0 flex-col items-center self-stretch overflow-hidden h-full">
+        {/* HEADER BAR */}
+        <div className="flex w-full items-center gap-3 border-b border-solid bg-neutral-0 px-4 py-2.5"
+             style={{
+               borderColor: activeTheme.border,
+               backgroundColor: activeTheme.cardBg
+             }}
+        >
+          <IconButton
+            variant="neutral-tertiary"
+            icon={<FeatherArrowLeft />}
+            onClick={onBack}
           />
-          <span>of {pages.length}</span>
-        </div>
-      </div>
-
-      {/* Main Manga Panel */}
-      <div 
-        ref={containerRef}
-        style={{
-          flex: 1,
-          overflow: 'auto',
-          display: viewMode === 'webtoon' ? 'block' : 'flex',
-          justifyContent: viewMode === 'webtoon' ? 'flex-start' : 'center',
-          alignItems: viewMode === 'webtoon' ? 'stretch' : 'center',
-          padding: viewMode === 'webtoon' ? '0' : '20px',
-          backgroundColor: '#050507',
-          borderRadius: '16px',
-          border: '1px solid var(--border-glass)',
-          position: 'relative',
-        }}
-      >
-        {loading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-            <div style={{ width: '40px', height: '40px', borderRadius: '50%', border: '3px solid var(--border-glass)', borderTopColor: 'var(--accent-primary)', animation: 'spin 1s linear infinite' }} />
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{loadingText}</p>
+          <div className="flex h-6 w-px flex-none flex-col items-start bg-neutral-border mobile:hidden" style={{ backgroundColor: activeTheme.border }} />
+          <div className="flex min-w-[0px] grow shrink-0 basis-0 flex-col items-start">
+            <span className="line-clamp-1 w-full text-body-bold font-body-bold text-default-font" style={{ color: activeTheme.heading }}>
+              {book.title}
+            </span>
+            <span className="line-clamp-1 w-full text-caption font-caption text-subtext-color">
+              Manga Archive
+            </span>
           </div>
-        ) : (
-          renderPagesContent()
+
+          <div className="flex items-center gap-1">
+            {/* Tuning Settings Dropdown */}
+            <SubframeCore.DropdownMenu.Root>
+              <SubframeCore.DropdownMenu.Trigger asChild>
+                <Button
+                  variant="neutral-secondary"
+                  icon={<FeatherSettings />}
+                >
+                  Options
+                </Button>
+              </SubframeCore.DropdownMenu.Trigger>
+              <SubframeCore.DropdownMenu.Portal>
+                <SubframeCore.DropdownMenu.Content
+                  side="bottom"
+                  align="end"
+                  sideOffset={6}
+                  asChild
+                >
+                  <div 
+                    className="flex w-80 flex-none flex-col items-start gap-4 rounded-xl border border-solid px-4 py-4 shadow-lg"
+                    style={{
+                      backgroundColor: '#1e293b',
+                      borderColor: '#334155',
+                      color: '#f8fafc',
+                    }}
+                  >
+                    {/* VIEW MODE */}
+                    <div className="flex w-full flex-col items-start gap-1.5">
+                      <span className="text-caption-bold font-caption-bold text-subtext-color" style={{ color: '#94a3b8' }}>
+                        VIEW MODE
+                      </span>
+                      <ToggleGroup
+                        className="h-auto w-full flex-none"
+                        value={viewMode}
+                        onValueChange={(value: string) => {
+                          if (value) {
+                            setViewMode(value as any);
+                            syncProgress(currentPage);
+                          }
+                        }}
+                      >
+                        <ToggleGroup.Item value="single-page">Single</ToggleGroup.Item>
+                        <ToggleGroup.Item value="double-page">Double</ToggleGroup.Item>
+                        <ToggleGroup.Item value="webtoon">Webtoon</ToggleGroup.Item>
+                      </ToggleGroup>
+                    </div>
+
+                    {/* READING DIRECTION */}
+                    {viewMode !== 'webtoon' && (
+                      <div className="flex w-full flex-col items-start gap-1.5">
+                        <span className="text-caption-bold font-caption-bold text-subtext-color" style={{ color: '#94a3b8' }}>
+                          READING DIRECTION
+                        </span>
+                        <ToggleGroup
+                          className="h-auto w-full flex-none"
+                          value={readingDirection}
+                          onValueChange={(value: string) => {
+                            if (value) {
+                              setReadingDirection(value as any);
+                            }
+                          }}
+                        >
+                          <ToggleGroup.Item value="rtl">RTL</ToggleGroup.Item>
+                          <ToggleGroup.Item value="ltr">LTR</ToggleGroup.Item>
+                        </ToggleGroup>
+                      </div>
+                    )}
+
+                    <div className="flex h-px w-full flex-none items-start bg-neutral-200" style={{ backgroundColor: '#334155' }} />
+
+                    {/* BRIGHTNESS */}
+                    <div className="flex w-full flex-col items-start gap-1.5">
+                      <span className="text-caption-bold font-caption-bold text-subtext-color" style={{ color: '#94a3b8' }}>
+                        BRIGHTNESS
+                      </span>
+                      <div className="flex w-full items-center justify-between rounded-md px-2 py-1.5"
+                           style={{ backgroundColor: '#0f172a' }}>
+                        <IconButton
+                          variant="neutral-tertiary"
+                          size="small"
+                          icon={<FeatherMinus />}
+                          onClick={() => setBrightness(b => Math.max(60, b - 5))}
+                        />
+                        <span className="text-body-bold font-body-bold text-default-font" style={{ color: '#f8fafc' }}>
+                          {brightness}%
+                        </span>
+                        <IconButton
+                          variant="neutral-tertiary"
+                          size="small"
+                          icon={<FeatherPlus />}
+                          onClick={() => setBrightness(b => Math.min(140, b + 5))}
+                        />
+                      </div>
+                    </div>
+
+                    {/* CONTRAST */}
+                    <div className="flex w-full flex-col items-start gap-1.5">
+                      <span className="text-caption-bold font-caption-bold text-subtext-color" style={{ color: '#94a3b8' }}>
+                        CONTRAST
+                      </span>
+                      <div className="flex w-full items-center justify-between rounded-md px-2 py-1.5"
+                           style={{ backgroundColor: '#0f172a' }}>
+                        <IconButton
+                          variant="neutral-tertiary"
+                          size="small"
+                          icon={<FeatherMinus />}
+                          onClick={() => setContrast(c => Math.max(60, c - 5))}
+                        />
+                        <span className="text-body-bold font-body-bold text-default-font" style={{ color: '#f8fafc' }}>
+                          {contrast}%
+                        </span>
+                        <IconButton
+                          variant="neutral-tertiary"
+                          size="small"
+                          icon={<FeatherPlus />}
+                          onClick={() => setContrast(c => Math.min(140, c + 5))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </SubframeCore.DropdownMenu.Content>
+              </SubframeCore.DropdownMenu.Portal>
+            </SubframeCore.DropdownMenu.Root>
+          </div>
+        </div>
+
+        {/* READING SURFACE AREA */}
+        <div className="flex w-full grow shrink-0 basis-0 flex-col items-center px-6 py-4 overflow-hidden mobile:px-4">
+          <div 
+            ref={containerRef}
+            className="flex w-full grow flex-col items-center justify-center rounded-xl border border-solid shadow-md"
+            style={{
+              borderColor: activeTheme.border,
+              backgroundColor: '#050507',
+              width: '100%',
+              maxWidth: '96%',
+              height: '100%',
+              overflow: viewMode === 'webtoon' ? 'auto' : 'hidden',
+              display: viewMode === 'webtoon' ? 'block' : 'flex',
+              justifyContent: viewMode === 'webtoon' ? 'flex-start' : 'center',
+              alignItems: viewMode === 'webtoon' ? 'stretch' : 'center',
+              padding: viewMode === 'webtoon' ? '0' : '20px',
+              transition: 'all 0.3s ease'
+            }}
+          >
+            {loading ? (
+              <div className="flex flex-col items-center gap-4">
+                <div className="h-10 w-10 animate-spin rounded-full border-3 border-solid border-brand-200 border-t-brand-600" />
+                <p className="text-body font-body text-subtext-color">{loadingText}</p>
+              </div>
+            ) : (
+              renderPagesContent()
+            )}
+          </div>
+        </div>
+
+        {/* BOTTOM NAVIGATION / PROGRESS BAR */}
+        {!loading && (
+          <div className="flex w-full flex-col items-center gap-2 border-t border-solid bg-neutral-0 px-6 py-3 mobile:px-4"
+               style={{
+                 borderColor: activeTheme.border,
+                 backgroundColor: activeTheme.cardBg
+               }}
+          >
+            <div className="flex w-full items-center gap-4 max-w-[680px]">
+              <IconButton
+                variant="neutral-tertiary"
+                icon={<FeatherChevronLeft />}
+                disabled={readingDirection === 'rtl' ? currentPage >= pages.length : currentPage <= 1}
+                onClick={readingDirection === 'rtl' ? handleNext : handlePrev}
+              />
+              <div className="flex grow shrink-0 basis-0 flex-col items-center gap-2">
+                <div className="flex w-full items-center justify-between">
+                  <span className="line-clamp-1 text-caption-bold font-caption-bold text-default-font" style={{ color: activeTheme.heading }}>
+                    Page {currentPage} of {pages.length} ({percentComplete}%)
+                  </span>
+                </div>
+                <div 
+                  onClick={(e) => {
+                    if (pages.length === 0) return;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const clickX = e.clientX - rect.left;
+                    const percentage = clickX / rect.width;
+                    const targetPage = Math.max(1, Math.min(pages.length, Math.round(percentage * pages.length)));
+                    setCurrentPage(targetPage);
+                    syncProgress(targetPage);
+                  }}
+                  className="flex w-full items-center py-1 relative cursor-pointer"
+                >
+                  <div className="flex h-0.5 grow shrink-0 basis-0 items-start rounded-full bg-neutral-200" style={{ backgroundColor: activeTheme.border }}>
+                    <div 
+                      className="flex items-start self-stretch rounded-full bg-brand-600" 
+                      style={{ width: `${percentComplete}%` }}
+                    />
+                  </div>
+                  <div 
+                    className="flex h-3 w-3 flex-none items-start rounded-full bg-brand-600 shadow-md absolute ring-2 ring-brand-600 ring-offset-1"
+                    style={{ 
+                      left: `calc(${percentComplete}% - 6px)`,
+                      ['--tw-ring-offset-color' as any]: activeTheme.cardBg
+                    }}
+                  />
+                </div>
+              </div>
+              <IconButton
+                variant="neutral-tertiary"
+                icon={<FeatherChevronRight />}
+                disabled={readingDirection === 'rtl' ? currentPage <= 1 : currentPage >= pages.length}
+                onClick={readingDirection === 'rtl' ? handlePrev : handleNext}
+              />
+            </div>
+          </div>
         )}
       </div>
-
-      {/* Floating Bottom Layout Controls */}
-      {!loading && viewMode !== 'webtoon' && (
-        <div 
-          className="glass-panel" 
-          style={{ 
-            position: 'absolute', 
-            bottom: '24px', 
-            left: '50%', 
-            transform: 'translateX(-50%)', 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '20px', 
-            padding: '12px 24px', 
-            borderRadius: '50px',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.6)',
-            border: '1px solid rgba(255, 255, 255, 0.12)',
-            zIndex: 10,
-          }}
-        >
-          {/* Navigation */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <button 
-              onClick={readingDirection === 'rtl' ? handleNext : handlePrev}
-              disabled={readingDirection === 'rtl' ? currentPage >= pages.length : currentPage <= 1}
-              style={{ color: '#fff', padding: '6px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.03)' }}
-              title="Previous Page (Key: Left/Right Arrow)"
-            >
-              <ChevronLeft size={20} />
-            </button>
-            <button 
-              onClick={readingDirection === 'rtl' ? handlePrev : handleNext}
-              disabled={readingDirection === 'rtl' ? currentPage <= 1 : currentPage >= pages.length}
-              style={{ color: '#fff', padding: '6px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.03)' }}
-              title="Next Page (Key: Right/Left Arrow / Space)"
-            >
-              <ChevronRight size={20} />
-            </button>
-          </div>
-
-          <div style={{ width: '1px', height: '20px', backgroundColor: 'var(--border-glass)' }} />
-
-          {/* Reading Direction */}
-          <button 
-            onClick={() => {
-              const dir = readingDirection === 'rtl' ? 'ltr' : 'rtl';
-              setReadingDirection(dir);
-              onUpdateProgress(book.id, {
-                current_page: currentPage,
-                zoom: 1.0,
-                view_mode: viewMode,
-                scroll_position: 0,
-                reading_direction: dir,
-              });
-            }}
-            style={{ 
-              color: 'var(--text-secondary)',
-              display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', fontWeight: 500
-            }}
-            title="Toggle LTR / RTL Mode"
-          >
-            <Undo size={14} style={{ transform: readingDirection === 'rtl' ? 'scaleX(-1)' : 'none' }} />
-            <span>{readingDirection === 'rtl' ? 'RTL' : 'LTR'}</span>
-          </button>
-
-          <div style={{ width: '1px', height: '20px', backgroundColor: 'var(--border-glass)' }} />
-
-          {/* View Modes */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <button 
-              onClick={() => { setViewMode('single-page'); syncProgress(currentPage); }}
-              style={{ 
-                color: viewMode === 'single-page' ? 'var(--accent-secondary)' : 'var(--text-secondary)',
-                display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', fontWeight: 500
-              }}
-            >
-              <Layout size={16} /> <span className="desktop-only">Single</span>
-            </button>
-            <button 
-              onClick={() => { setViewMode('double-page'); syncProgress(currentPage); }}
-              style={{ 
-                color: viewMode === 'double-page' ? 'var(--accent-secondary)' : 'var(--text-secondary)',
-                display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', fontWeight: 500
-              }}
-            >
-              <Layout size={16} style={{ transform: 'rotate(90deg)' }} /> <span className="desktop-only">Double</span>
-            </button>
-            <button 
-              onClick={() => { setViewMode('webtoon'); syncProgress(currentPage); }}
-              style={{ 
-                color: viewMode === 'webtoon' ? 'var(--accent-secondary)' : 'var(--text-secondary)',
-                display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', fontWeight: 500
-              }}
-            >
-              <AlignJustify size={16} /> <span className="desktop-only">Webtoon</span>
-            </button>
-          </div>
-
-          <div style={{ width: '1px', height: '20px', backgroundColor: 'var(--border-glass)' }} />
-
-          {/* Image tuning */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }} title="Adjust Brightness">
-              <Sun size={14} style={{ color: 'var(--text-muted)' }} />
-              <input 
-                type="range" 
-                min="60" 
-                max="140" 
-                value={brightness}
-                onChange={(e) => setBrightness(parseInt(e.target.value))}
-                style={{ width: '60px', accentColor: 'var(--accent-primary)' }}
-              />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }} title="Adjust Contrast">
-              <Eye size={14} style={{ color: 'var(--text-muted)' }} />
-              <input 
-                type="range" 
-                min="60" 
-                max="140" 
-                value={contrast}
-                onChange={(e) => setContrast(parseInt(e.target.value))}
-                style={{ width: '60px', accentColor: 'var(--accent-secondary)' }}
-              />
-            </div>
-          </div>
-
-        </div>
-      )}
-
-      {/* Floating webtoon exit triggers */}
-      {viewMode === 'webtoon' && (
-        <button 
-          onClick={() => setViewMode('single-page')}
-          className="glass-panel"
-          style={{ 
-            position: 'absolute', 
-            bottom: '24px', 
-            right: '24px', 
-            padding: '10px 16px', 
-            borderRadius: '50px',
-            fontSize: '0.8rem',
-            fontWeight: 600,
-            color: 'var(--accent-secondary)',
-            border: '1px solid var(--border-glass)',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-            zIndex: 10
-          }}
-        >
-          Exit Webtoon
-        </button>
-      )}
-
-      <style>{`
-        .hover-white:hover { color: #fff !important; }
-      `}</style>
     </div>
   );
 }

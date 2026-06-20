@@ -104,13 +104,13 @@
   --text-monospace-body--line-height: 20px;
 
   /* Font families */
-  --font-caption: Montserrat;
-  --font-caption-bold: Montserrat;
-  --font-body: Montserrat;
-  --font-body-bold: Montserrat;
-  --font-heading-3: Montserrat;
-  --font-heading-2: Montserrat;
-  --font-heading-1: Montserrat;
+  --font-caption: Montserrat, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-caption-bold: Montserrat, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-body: Montserrat, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-body-bold: Montserrat, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-heading-3: Montserrat, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-heading-2: Montserrat, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-heading-1: Montserrat, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-monospace-body: monospace;
 
   /* Box shadows */

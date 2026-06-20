@@ -37,6 +37,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 interface DashboardProps {
   books: BookType[];
   user: User | null;
+  token: string | null;
   googleClientId: string;
   onSelectBook: (book: BookType) => void;
   onUploadSuccess: (book: BookType) => void;
@@ -67,12 +68,18 @@ function formatRelativeDate(value: string) {
 
 function Cover({ book, className }: { book: BookType; className: string }) {
   if (book.cover_path) {
-    return <img className={className} src={book.cover_path} alt={`${book.title} cover`} />;
+    return (
+      <img 
+        className={`${className} border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.4)] transition-all duration-300 group-hover:scale-[1.03] group-hover:shadow-[0_12px_40px_0_rgba(139,92,246,0.15)] group-hover:border-purple-500/30`} 
+        src={book.cover_path} 
+        alt={`${book.title} cover`} 
+      />
+    );
   }
 
   return (
-    <div className={`${className} flex items-center justify-center bg-gradient-to-br from-brand-100 to-neutral-200 p-4`}>
-      <FeatherBookOpen className="text-heading-1 font-heading-1 text-brand-700" />
+    <div className={`${className} flex items-center justify-center bg-gradient-to-br from-neutral-900 via-neutral-950 to-purple-950/20 border border-white/10 p-4 shadow-[0_8px_32px_0_rgba(0,0,0,0.4)] transition-all duration-300 group-hover:scale-[1.03] group-hover:shadow-[0_12px_40px_0_rgba(139,92,246,0.15)] group-hover:border-purple-500/30`}>
+      <FeatherBookOpen className="text-heading-1 font-heading-1 text-purple-400 opacity-80" />
     </div>
   );
 }
@@ -105,6 +112,7 @@ function RailItem({ icon, label, active = false, badge }: {
 export default function Dashboard({
   books,
   user,
+  token,
   googleClientId,
   onSelectBook,
   onUploadSuccess,
@@ -214,7 +222,6 @@ export default function Dashboard({
 
       const xhr = new XMLHttpRequest();
       xhr.open('POST', '/api/books');
-      const token = localStorage.getItem('reader_jwt');
       if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable) setUploadProgress(40 + Math.round((event.loaded / event.total) * 55));

@@ -338,7 +338,7 @@ async def upload_book(
         
     # Generate page manifest for manga (ZIP/CBZ) files
     page_manifest_json = None
-    if final_type == "manga":
+    if final_type in ["manga", "cbz", "zip"]:
         import io
         pages = get_manga_pages_from_zip(io.BytesIO(final_file_bytes))
         final_total_pages = len(pages)
@@ -571,7 +571,7 @@ async def get_manga_pages(book_id: str, user_id: str = Depends(get_current_user_
     if not book:
         raise HTTPException(status_code=404, detail="Book not found or access denied")
         
-    if book["type"] != "manga":
+    if book["type"] not in ["manga", "cbz", "zip"]:
         raise HTTPException(status_code=400, detail="Only manga books have page manifests")
         
     # Check if page manifest is already cached in DB
@@ -637,7 +637,7 @@ async def get_manga_page_image(
     if not book:
         raise HTTPException(status_code=404, detail="Book not found or access denied")
         
-    if book["type"] != "manga":
+    if book["type"] not in ["manga", "cbz", "zip"]:
         raise HTTPException(status_code=400, detail="Only manga books have image pages")
         
     # 3. Retrieve or lazily load the page manifest to find the filename at page_index

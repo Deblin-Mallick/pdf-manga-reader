@@ -83,7 +83,7 @@ const IconButtonRoot = React.forwardRef<HTMLButtonElement, IconButtonRootProps>(
               {
                 hidden: loading,
                 "text-body font-body": size === "small",
-                "text-black":
+                "text-white":
                   variant === "inverse" ||
                   variant === "destructive-primary" ||
                   variant === "brand-primary",
@@ -103,7 +103,7 @@ const IconButtonRoot = React.forwardRef<HTMLButtonElement, IconButtonRootProps>(
             "hidden text-caption font-caption text-neutral-700 group-disabled/af9405b1:text-neutral-400",
             {
               "inline-block": loading,
-              "text-black":
+              "text-white":
                 variant === "inverse" ||
                 variant === "destructive-primary" ||
                 variant === "brand-primary",

@@ -98,13 +98,13 @@ const themeStyles: Record<'light' | 'dark' | 'sepia', ThemeStyle> = {
     activeBg: 'rgba(0, 0, 0, 0.05)',
   },
   dark: {
-    bg: '#111827',       // Dark blue-gray background
-    cardBg: '#1f2937',   // Dark gray reading surface
-    text: '#e5e7eb',     // Light gray text
-    heading: '#ffffff',  // White headings
-    hr: 'rgba(255,255,255,0.08)',
-    sidebarBg: 'rgba(31, 41, 55, 0.95)',
-    sidebarText: '#d1d5db',
+    bg: '#09090e',       // Sleek Obsidian background
+    cardBg: '#12121a',   // Deep surface reading card
+    text: '#cbd5e1',     // Soft slate text
+    heading: '#f8fafc',  // White headings
+    hr: 'rgba(255,255,255,0.06)',
+    sidebarBg: 'rgba(18, 18, 26, 0.95)',
+    sidebarText: '#94a3b8',
     border: 'rgba(255,255,255,0.06)',
     activeBg: 'rgba(255, 255, 255, 0.05)',
   },
@@ -193,6 +193,12 @@ export default function EPUBReader({
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const blobUrlsRef = useRef<string[]>([]);
+
+  // Refs for pending progress flush on page unload
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingProgressRef = useRef<{
+    page: number; zoom: number; mode: string;
+  } | null>(null);
 
   // Load Bookmarks & Notes from localStorage
   useEffect(() => {
@@ -533,7 +539,49 @@ export default function EPUBReader({
     };
   }, []);
 
-  // Sync progress to backend
+  const debouncedSyncProgress = useCallback((page: number, currentZoom: number, currentMode: string) => {
+    // Always store the latest values so beforeunload can flush them
+    pendingProgressRef.current = { page, zoom: currentZoom, mode: currentMode };
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current);
+    }
+    syncTimeoutRef.current = setTimeout(() => {
+      pendingProgressRef.current = null;
+      onUpdateProgress(book.id, {
+        current_page: page,
+        zoom: currentZoom,
+        view_mode: currentMode,
+        scroll_position: 0,
+        reading_direction: 'ltr',
+      });
+    }, 1000); // 1-second debounce to protect SQLite database from locking
+  }, [book.id, onUpdateProgress]);
+
+  // Clean up timers on unmount + flush pending progress immediately before page unloads
+  useEffect(() => {
+    const handleUnload = () => {
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+      const p = pendingProgressRef.current;
+      if (p) {
+        // Use navigator.sendBeacon for a fire-and-forget flush on page close
+        const payload = JSON.stringify({
+          current_page: p.page, zoom: p.zoom, view_mode: p.mode,
+          scroll_position: 0, reading_direction: 'ltr',
+        });
+        navigator.sendBeacon(
+          `/api/books/${book.id}/progress`,
+          new Blob([payload], { type: 'application/json' })
+        );
+      }
+    };
+    window.addEventListener('beforeunload', handleUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleUnload);
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    };
+  }, [book.id]);
+
+  // Sync progress to backend (Debounced)
   useEffect(() => {
     if (spineHrefs.length === 0) return;
     const progressZoom = settings.fontSize / 18.0;
@@ -544,15 +592,9 @@ export default function EPUBReader({
       Math.abs(progressZoom - book.zoom) > 0.05 ||
       progressMode !== book.view_mode
     ) {
-      onUpdateProgress(book.id, {
-        current_page: currentPage,
-        zoom: progressZoom,
-        view_mode: progressMode,
-        scroll_position: 0,
-        reading_direction: 'ltr',
-      });
+      debouncedSyncProgress(currentPage, progressZoom, progressMode);
     }
-  }, [currentPage, settings.fontSize, settings.theme, book.id, spineHrefs, onUpdateProgress]);
+  }, [currentPage, settings.fontSize, settings.theme, book.id, book.current_page, book.zoom, book.view_mode, spineHrefs, debouncedSyncProgress]);
 
   // Navigation handlers
   const handleNextPage = useCallback(() => {

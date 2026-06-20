@@ -22,7 +22,7 @@ const Item = React.forwardRef<HTMLDivElement, ItemProps>(function Item(
   {
     disabled = false,
     children,
-    icon = <FeatherStar />,
+    icon,
     className,
     ...otherProps
   }: ItemProps,

@@ -1,7 +1,20 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, Minimize2, Eye, Sun, ChevronLeft, ChevronRight, List } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { Book } from '../App';
+import { Avatar, Badge, Button, IconButton, Select, Tabs, ToggleGroup } from '../ui';
+import * as SubframeCore from "@subframe/core";
+import {
+  FeatherArrowLeft,
+  FeatherChevronLeft,
+  FeatherChevronRight,
+  FeatherLayout,
+  FeatherList,
+  FeatherMinus,
+  FeatherPlus,
+  FeatherSettings,
+  FeatherSun,
+  FeatherEye,
+} from "@subframe/core";
 
 interface PDFReaderProps {
   book: Book;
@@ -18,6 +31,54 @@ interface PDFReaderProps {
     }
   ) => void;
 }
+
+interface ThemeStyle {
+  bg: string;
+  cardBg: string;
+  text: string;
+  heading: string;
+  hr: string;
+  sidebarBg: string;
+  sidebarText: string;
+  border: string;
+  activeBg: string;
+}
+
+const themeStyles: Record<'light' | 'dark' | 'sepia', ThemeStyle> = {
+  light: {
+    bg: '#F8F6F1',
+    cardBg: '#ffffff',
+    text: '#1f2937',
+    heading: '#0f172a',
+    hr: 'rgba(0,0,0,0.08)',
+    sidebarBg: 'rgba(255, 255, 255, 0.9)',
+    sidebarText: '#374151',
+    border: 'rgba(0,0,0,0.06)',
+    activeBg: 'rgba(0, 0, 0, 0.05)',
+  },
+  dark: {
+    bg: '#09090e',
+    cardBg: '#12121a',
+    text: '#cbd5e1',
+    heading: '#f8fafc',
+    hr: 'rgba(255,255,255,0.06)',
+    sidebarBg: 'rgba(18, 18, 26, 0.95)',
+    sidebarText: '#94a3b8',
+    border: 'rgba(255,255,255,0.06)',
+    activeBg: 'rgba(255, 255, 255, 0.05)',
+  },
+  sepia: {
+    bg: '#F4ECD8',
+    cardBg: '#FDF6E3',
+    text: '#5C4636',
+    heading: '#433422',
+    hr: 'rgba(92,70,54,0.12)',
+    sidebarBg: 'rgba(244, 236, 216, 0.95)',
+    sidebarText: '#5C4636',
+    border: 'rgba(92,70,54,0.08)',
+    activeBg: 'rgba(92, 70, 54, 0.06)',
+  }
+};
 
 // ─── Single-page canvas renderer ───────────────────────────────────────────
 function PDFPageCanvas({
@@ -325,374 +386,272 @@ export default function PDFReader({ book, token, onBack, onUpdateProgress }: PDF
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [totalPages, scrollMode, currentPage, jumpToPage]);
 
-  const Divider = () => (
-    <div style={{ width: '1px', height: '20px', backgroundColor: 'rgba(255,255,255,0.12)', flexShrink: 0 }} />
-  );
+  const activeTheme = themeStyles.dark;
+  const percentComplete = Math.round(((currentPage) / (totalPages || 1)) * 100);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: 'calc(100vh - 120px)', position: 'relative' }}>
-
-      {/* ── Top Toolbar ───────────────────────────────────────────────────── */}
-      <div
-        className="glass-panel"
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: '10px 20px',
-          marginBottom: '12px',
-          borderRadius: '14px',
-          gap: '8px',
-          flexWrap: 'wrap',
-          zIndex: 5,
-        }}
-      >
-        {/* Back + Title */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-          <button
+    <div 
+      className="flex h-full w-full items-start"
+      style={{
+        backgroundColor: activeTheme.bg,
+        color: activeTheme.text,
+        transition: 'all 0.3s ease'
+      }}
+    >
+      {/* MAIN READING WORKSPACE */}
+      <div className="flex grow shrink-0 basis-0 flex-col items-center self-stretch overflow-hidden h-full">
+        {/* HEADER BAR */}
+        <div className="flex w-full items-center gap-3 border-b border-solid bg-neutral-0 px-4 py-2.5"
+             style={{
+               borderColor: activeTheme.border,
+               backgroundColor: activeTheme.cardBg
+             }}
+        >
+          <IconButton
+            variant="neutral-tertiary"
+            icon={<FeatherArrowLeft />}
             onClick={onBack}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)', flexShrink: 0 }}
-            className="hover-white"
-          >
-            <ArrowLeft size={17} /> Back
-          </button>
-          <span
-            style={{
-              fontSize: '0.9rem',
-              fontWeight: 500,
-              color: '#fff',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              maxWidth: '240px',
-            }}
-          >
-            {book.title}
-          </span>
+          />
+          <div className="flex h-6 w-px flex-none flex-col items-start bg-neutral-border mobile:hidden" style={{ backgroundColor: activeTheme.border }} />
+          <div className="flex min-w-[0px] grow shrink-0 basis-0 flex-col items-start">
+            <span className="line-clamp-1 w-full text-body-bold font-body-bold text-default-font" style={{ color: activeTheme.heading }}>
+              {book.title}
+            </span>
+            <span className="line-clamp-1 w-full text-caption font-caption text-subtext-color">
+              PDF Document
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1">
+            {/* Tuning Settings Dropdown */}
+            <SubframeCore.DropdownMenu.Root>
+              <SubframeCore.DropdownMenu.Trigger asChild>
+                <Button
+                  variant="neutral-secondary"
+                  icon={<FeatherSettings />}
+                >
+                  Options
+                </Button>
+              </SubframeCore.DropdownMenu.Trigger>
+              <SubframeCore.DropdownMenu.Portal>
+                <SubframeCore.DropdownMenu.Content
+                  side="bottom"
+                  align="end"
+                  sideOffset={6}
+                  asChild
+                >
+                  <div 
+                    className="flex w-80 flex-none flex-col items-start gap-4 rounded-xl border border-solid px-4 py-4 shadow-lg"
+                    style={{
+                      backgroundColor: '#1e293b',
+                      borderColor: '#334155',
+                      color: '#f8fafc',
+                    }}
+                  >
+                    {/* SCROLL MODE */}
+                    <div className="flex w-full flex-col items-start gap-1.5">
+                      <span className="text-caption-bold font-caption-bold text-subtext-color" style={{ color: '#94a3b8' }}>
+                        SCROLL MODE
+                      </span>
+                      <ToggleGroup
+                        className="h-auto w-full flex-none"
+                        value={scrollMode ? 'scroll' : 'page'}
+                        onValueChange={(value: string) => {
+                          if (value) {
+                            setScrollMode(value === 'scroll');
+                          }
+                        }}
+                      >
+                        <ToggleGroup.Item value="page">Page-by-Page</ToggleGroup.Item>
+                        <ToggleGroup.Item value="scroll">Infinite Scroll</ToggleGroup.Item>
+                      </ToggleGroup>
+                    </div>
+
+                    {/* FIT MODE */}
+                    <div className="flex w-full flex-col items-start gap-1.5">
+                      <span className="text-caption-bold font-caption-bold text-subtext-color" style={{ color: '#94a3b8' }}>
+                        FIT MODE
+                      </span>
+                      <ToggleGroup
+                        className="h-auto w-full flex-none"
+                        value={viewMode}
+                        onValueChange={(value: string) => {
+                          if (value) {
+                            setViewMode(value);
+                          }
+                        }}
+                      >
+                        <ToggleGroup.Item value="fit-width">Fit Width</ToggleGroup.Item>
+                        <ToggleGroup.Item value="fit-height">Fit Height</ToggleGroup.Item>
+                      </ToggleGroup>
+                    </div>
+
+                    <div className="flex h-px w-full flex-none items-start bg-neutral-200" style={{ backgroundColor: '#334155' }} />
+
+                    {/* ZOOM CONTROL */}
+                    <div className="flex w-full flex-col items-start gap-1.5">
+                      <span className="text-caption-bold font-caption-bold text-subtext-color" style={{ color: '#94a3b8' }}>
+                        ZOOM LEVEL
+                      </span>
+                      <div className="flex w-full items-center justify-between rounded-md px-2 py-1.5"
+                           style={{ backgroundColor: '#0f172a' }}>
+                        <IconButton
+                          variant="neutral-tertiary"
+                          size="small"
+                          icon={<FeatherMinus />}
+                          onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}
+                        />
+                        <span className="text-body-bold font-body-bold text-default-font" style={{ color: '#f8fafc' }}>
+                          {Math.round(zoom * 100)}%
+                        </span>
+                        <IconButton
+                          variant="neutral-tertiary"
+                          size="small"
+                          icon={<FeatherPlus />}
+                          onClick={() => setZoom((z) => Math.min(3.0, z + 0.25))}
+                        />
+                      </div>
+                    </div>
+
+                    {/* NIGHT MODE */}
+                    <div className="flex w-full items-center justify-between mt-1">
+                      <span className="text-caption-bold font-caption-bold text-subtext-color" style={{ color: '#94a3b8' }}>
+                        NIGHT MODE
+                      </span>
+                      <ToggleGroup
+                        className="h-auto w-32 flex-none"
+                        value={isInverted ? 'dark' : 'light'}
+                        onValueChange={(value: string) => {
+                          if (value) {
+                            setIsInverted(value === 'dark');
+                          }
+                        }}
+                      >
+                        <ToggleGroup.Item value="light">Off</ToggleGroup.Item>
+                        <ToggleGroup.Item value="dark">On</ToggleGroup.Item>
+                      </ToggleGroup>
+                    </div>
+
+                  </div>
+                </SubframeCore.DropdownMenu.Content>
+              </SubframeCore.DropdownMenu.Portal>
+            </SubframeCore.DropdownMenu.Root>
+          </div>
         </div>
 
-        {/* Centre controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-
-          {/* Prev / Page input / Next */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <button
-              onClick={() => jumpToPage(currentPage - 1)}
-              disabled={currentPage <= 1}
-              style={{ color: currentPage <= 1 ? 'var(--text-muted)' : '#fff', padding: '5px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.04)' }}
-              title="Previous page"
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-              <input
-                type="number"
-                value={currentPage}
-                min={1}
-                max={totalPages}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value);
-                  if (v >= 1 && v <= totalPages) jumpToPage(v);
-                }}
+        {/* READING SURFACE AREA */}
+        <div className="flex w-full grow shrink-0 basis-0 flex-col items-center px-6 py-4 overflow-hidden mobile:px-4">
+          <div 
+            ref={containerRef}
+            className="flex w-full grow flex-col items-center justify-center rounded-xl border border-solid shadow-md"
+            style={{
+              borderColor: activeTheme.border,
+              backgroundColor: '#050508',
+              width: '100%',
+              maxWidth: '96%',
+              height: '100%',
+              overflow: scrollMode ? 'auto' : 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: scrollMode ? 'flex-start' : 'center',
+              padding: '20px',
+              transition: 'all 0.3s ease'
+            }}
+          >
+            {loading ? (
+              <div className="flex flex-col items-center gap-4">
+                <div className="h-10 w-10 animate-spin rounded-full border-3 border-solid border-brand-200 border-t-brand-600" />
+                <p className="text-body font-body text-subtext-color">Loading book pages...</p>
+              </div>
+            ) : scrollMode ? (
+              <>
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                  <PDFPageCanvas
+                    key={pageNum}
+                    pdf={pdf!}
+                    pageNumber={pageNum}
+                    zoom={zoom}
+                    viewMode={viewMode}
+                    isInverted={isInverted}
+                    containerWidth={containerSize.width - 40}
+                    containerHeight={containerSize.height}
+                    onVisible={handleVisiblePage}
+                  />
+                ))}
+              </>
+            ) : (
+              <canvas
+                ref={canvasRef}
                 style={{
-                  width: '46px',
-                  padding: '4px 6px',
-                  borderRadius: '6px',
-                  border: '1px solid var(--border-glass)',
-                  backgroundColor: 'rgba(255,255,255,0.05)',
-                  color: '#fff',
-                  textAlign: 'center',
-                  fontSize: '0.82rem',
+                  boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                  borderRadius: '4px',
+                  transition: 'filter 0.3s ease',
+                  filter: isInverted ? 'invert(0.9) hue-rotate(180deg)' : 'none',
+                  maxWidth: '100%',
                 }}
               />
-              <span>/ {totalPages}</span>
-            </div>
-            <button
-              onClick={() => jumpToPage(currentPage + 1)}
-              disabled={currentPage >= totalPages}
-              style={{ color: currentPage >= totalPages ? 'var(--text-muted)' : '#fff', padding: '5px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.04)' }}
-              title="Next page"
-            >
-              <ChevronRight size={18} />
-            </button>
+            )}
           </div>
-
-          <Divider />
-
-          {/* Fit Width / Fit Height */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <button
-              onClick={() => setViewMode(viewMode === 'fit-width' ? 'custom' : 'fit-width')}
-              title="Fit Width"
-              style={{
-                display: 'flex', alignItems: 'center', gap: '5px',
-                fontSize: '0.78rem', fontWeight: 500, padding: '5px 10px', borderRadius: '8px',
-                color: viewMode === 'fit-width' ? 'var(--accent-secondary)' : 'var(--text-secondary)',
-                backgroundColor: viewMode === 'fit-width' ? 'rgba(6,182,212,0.1)' : 'transparent',
-                border: `1px solid ${viewMode === 'fit-width' ? 'var(--accent-secondary)' : 'transparent'}`,
-                transition: 'all 0.2s',
-              }}
-            >
-              <Maximize2 size={15} /> <span className="desktop-only">Fit Width</span>
-            </button>
-            <button
-              onClick={() => setViewMode(viewMode === 'fit-height' ? 'custom' : 'fit-height')}
-              title="Fit Height"
-              style={{
-                display: 'flex', alignItems: 'center', gap: '5px',
-                fontSize: '0.78rem', fontWeight: 500, padding: '5px 10px', borderRadius: '8px',
-                color: viewMode === 'fit-height' ? 'var(--accent-secondary)' : 'var(--text-secondary)',
-                backgroundColor: viewMode === 'fit-height' ? 'rgba(6,182,212,0.1)' : 'transparent',
-                border: `1px solid ${viewMode === 'fit-height' ? 'var(--accent-secondary)' : 'transparent'}`,
-                transition: 'all 0.2s',
-              }}
-            >
-              <Minimize2 size={15} /> <span className="desktop-only">Fit Height</span>
-            </button>
-          </div>
-
-          <Divider />
-
-          {/* Zoom */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <button onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} style={{ color: 'var(--text-secondary)', padding: '4px' }} title="Zoom Out">
-              <ZoomOut size={16} />
-            </button>
-            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#fff', width: '38px', textAlign: 'center' }}>
-              {Math.round(zoom * 100)}%
-            </span>
-            <button onClick={() => setZoom((z) => Math.min(3.0, z + 0.25))} style={{ color: 'var(--text-secondary)', padding: '4px' }} title="Zoom In">
-              <ZoomIn size={16} />
-            </button>
-          </div>
-
-          <Divider />
-
-          {/* Infinite Scroll toggle */}
-          <button
-            onClick={() => setScrollMode((s) => !s)}
-            title={scrollMode ? 'Switch to page-by-page mode' : 'Switch to infinite scroll mode'}
-            style={{
-              display: 'flex', alignItems: 'center', gap: '5px',
-              fontSize: '0.78rem', fontWeight: 500, padding: '5px 10px', borderRadius: '8px',
-              color: scrollMode ? 'var(--accent-primary)' : 'var(--text-secondary)',
-              backgroundColor: scrollMode ? 'rgba(139,92,246,0.12)' : 'transparent',
-              border: `1px solid ${scrollMode ? 'var(--accent-primary)' : 'transparent'}`,
-              transition: 'all 0.2s',
-            }}
-          >
-            <List size={15} /> <span className="desktop-only">Scroll</span>
-          </button>
-
-          <Divider />
-
-          {/* Night Mode */}
-          <button
-            onClick={() => setIsInverted((v) => !v)}
-            title="Toggle Night Mode"
-            style={{
-              display: 'flex', alignItems: 'center', gap: '5px',
-              fontSize: '0.78rem', fontWeight: 500, padding: '5px 10px', borderRadius: '8px',
-              color: isInverted ? 'var(--accent-primary)' : 'var(--text-secondary)',
-              backgroundColor: isInverted ? 'rgba(139,92,246,0.12)' : 'transparent',
-              border: `1px solid ${isInverted ? 'var(--accent-primary)' : 'transparent'}`,
-              transition: 'all 0.2s',
-            }}
-          >
-            {isInverted ? <Sun size={15} /> : <Eye size={15} />}
-            <span className="desktop-only">Night Mode</span>
-          </button>
         </div>
 
-        {/* Right spacer */}
-        <div style={{ minWidth: '60px' }} />
-      </div>
-
-      {/* ── Canvas area wrapper ── shares position context between scrollable content and overlay */}
-      <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
-
-        {/* Scrollable / hidden canvas container */}
-        <div
-          ref={containerRef}
-          style={{
-            position: 'absolute',
-            inset: 0,
-            overflow: scrollMode ? 'auto' : 'hidden',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: scrollMode ? 'flex-start' : 'center',
-            padding: '20px',
-            backgroundColor: '#050508',
-            borderRadius: '16px',
-            border: '1px solid var(--border-glass)',
-          }}
-        >
-          {loading ? (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', margin: 'auto' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '50%', border: '3px solid var(--border-glass)', borderTopColor: 'var(--accent-secondary)', animation: 'spin 1s linear infinite' }} />
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Loading book pages...</p>
-            </div>
-          ) : scrollMode ? (
-            <>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
-                <PDFPageCanvas
-                  key={pageNum}
-                  pdf={pdf!}
-                  pageNumber={pageNum}
-                  zoom={zoom}
-                  viewMode={viewMode}
-                  isInverted={isInverted}
-                  containerWidth={containerSize.width - 40}
-                  containerHeight={containerSize.height}
-                  onVisible={handleVisiblePage}
-                />
-              ))}
-            </>
-          ) : (
-            <canvas
-              ref={canvasRef}
-              style={{
-                boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
-                borderRadius: '4px',
-                transition: 'filter 0.3s ease',
-                filter: isInverted ? 'invert(0.9) hue-rotate(180deg)' : 'none',
-                maxWidth: '100%',
-              }}
-            />
-          )}
-        </div>
-
-        {/* Overlay: always covers exactly the canvas area, works at any resolution */}
+        {/* BOTTOM NAVIGATION / PROGRESS BAR */}
         {!loading && (
-          <div style={{
-            position: 'absolute',
-            inset: 0,
-            pointerEvents: 'none',
-            zIndex: 30,
-            borderRadius: '16px',
-            overflow: 'hidden',
-          }}>
-            {/* Green circle home button — top-left */}
-            <button
-              onClick={onBack}
-              title="Back to Library"
-              className="pdf-home-btn"
-              style={{
-                position: 'absolute',
-                top: '16px',
-                left: '16px',
-                pointerEvents: 'auto',
-                width: '40px',
-                height: '40px',
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
-                boxShadow: '0 4px 16px rgba(34,197,94,0.45)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                border: '2px solid rgba(255,255,255,0.18)',
-                cursor: 'pointer',
-                transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-              }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-              </svg>
-            </button>
-
-            {/* Hover-triggered zoom widget — bottom-left */}
-            <div className="pdf-zoom-anchor" style={{ position: 'absolute', bottom: '16px', left: '16px', pointerEvents: 'auto' }}>
-              <div className="pdf-zoom-pill">
-                <button onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} className="pdf-zoom-btn" title="Zoom out">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                </button>
-                <span className="pdf-zoom-pct">{Math.round(zoom * 100)}%</span>
-                <button onClick={() => setZoom((z) => Math.min(3.0, z + 0.25))} className="pdf-zoom-btn" title="Zoom in">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                </button>
+          <div className="flex w-full flex-col items-center gap-2 border-t border-solid bg-neutral-0 px-6 py-3 mobile:px-4"
+               style={{
+                 borderColor: activeTheme.border,
+                 backgroundColor: activeTheme.cardBg
+               }}
+          >
+            <div className="flex w-full items-center gap-4 max-w-[680px]">
+              <IconButton
+                variant="neutral-tertiary"
+                icon={<FeatherChevronLeft />}
+                disabled={currentPage <= 1}
+                onClick={() => jumpToPage(currentPage - 1)}
+              />
+              <div className="flex grow shrink-0 basis-0 flex-col items-center gap-2">
+                <div className="flex w-full items-center justify-between">
+                  <span className="line-clamp-1 text-caption-bold font-caption-bold text-default-font" style={{ color: activeTheme.heading }}>
+                    Page {currentPage} of {totalPages} ({percentComplete}%)
+                  </span>
+                </div>
+                <div 
+                  onClick={(e) => {
+                    if (totalPages === 0) return;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const clickX = e.clientX - rect.left;
+                    const percentage = clickX / rect.width;
+                    const targetPage = Math.max(1, Math.min(totalPages, Math.round(percentage * totalPages)));
+                    jumpToPage(targetPage);
+                  }}
+                  className="flex w-full items-center py-1 relative cursor-pointer"
+                >
+                  <div className="flex h-0.5 grow shrink-0 basis-0 items-start rounded-full bg-neutral-200" style={{ backgroundColor: activeTheme.border }}>
+                    <div 
+                      className="flex items-start self-stretch rounded-full bg-brand-600" 
+                      style={{ width: `${percentComplete}%` }}
+                    />
+                  </div>
+                  <div 
+                    className="flex h-3 w-3 flex-none items-start rounded-full bg-brand-600 shadow-md absolute ring-2 ring-brand-600 ring-offset-1"
+                    style={{ 
+                      left: `calc(${percentComplete}% - 6px)`,
+                      ['--tw-ring-offset-color' as any]: activeTheme.cardBg
+                    }}
+                  />
+                </div>
               </div>
+              <IconButton
+                variant="neutral-tertiary"
+                icon={<FeatherChevronRight />}
+                disabled={currentPage >= totalPages}
+                onClick={() => jumpToPage(currentPage + 1)}
+              />
             </div>
           </div>
         )}
-
       </div>
-
-      <style>{`
-        .hover-white:hover { color: #fff !important; }
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-
-        /* ── Hide overlay controls on touch screens (Android / iOS) ── */
-        /* pointer:coarse = touch input; hover:none = no mouse hover capability */
-        @media (hover: none) and (pointer: coarse) {
-          .pdf-home-btn,
-          .pdf-zoom-anchor {
-            display: none !important;
-          }
-        }
-
-        /* ── Green home button ── */
-        .pdf-home-btn:hover {
-          transform: scale(1.12);
-          box-shadow: 0 6px 24px rgba(34,197,94,0.65) !important;
-        }
-        .pdf-home-btn:active {
-          transform: scale(0.95);
-        }
-
-        /* ── Zoom anchor (hitbox) ── */
-        .pdf-zoom-anchor {
-          width: fit-content;
-          padding: 20px 20px 4px 4px;
-        }
-        .pdf-zoom-pill {
-          display: flex;
-          align-items: center;
-          gap: 2px;
-          background: rgba(15,15,25,0.88);
-          backdrop-filter: blur(14px);
-          -webkit-backdrop-filter: blur(14px);
-          border: 1px solid rgba(255,255,255,0.13);
-          border-radius: 50px;
-          padding: 6px 10px;
-          box-shadow: 0 8px 28px rgba(0,0,0,0.55);
-          opacity: 0;
-          transform: translateY(8px);
-          transition: opacity 0.28s ease, transform 0.28s ease;
-          pointer-events: none;
-        }
-        .pdf-zoom-anchor:hover .pdf-zoom-pill {
-          opacity: 1;
-          transform: translateY(0);
-          pointer-events: auto;
-        }
-        .pdf-zoom-btn {
-          color: rgba(255,255,255,0.75);
-          padding: 5px 9px;
-          border-radius: 50px;
-          transition: color 0.15s, background 0.15s;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        .pdf-zoom-btn:hover {
-          color: #fff;
-          background: rgba(255,255,255,0.08);
-        }
-        .pdf-zoom-pct {
-          font-size: 0.82rem;
-          font-weight: 700;
-          color: #fff;
-          min-width: 40px;
-          text-align: center;
-          letter-spacing: 0.02em;
-        }
-      `}</style>
     </div>
   );
 }
-

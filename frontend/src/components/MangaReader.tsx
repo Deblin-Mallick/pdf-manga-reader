@@ -15,6 +15,9 @@ import {
   FeatherSun,
   FeatherEye,
   FeatherUndo,
+  FeatherFile,
+  FeatherScrollText,
+  FeatherBookOpen,
 } from "@subframe/core";
 
 interface MangaReaderProps {
@@ -100,11 +103,14 @@ export default function MangaReader({
   const [readingDirection, setReadingDirection] = useState<'ltr' | 'rtl'>(book.reading_direction || 'rtl');
   const [brightness, setBrightness] = useState<number>(savedPrefs.brightness ?? 100);
   const [contrast, setContrast] = useState<number>(savedPrefs.contrast ?? 100);
+  const [fitMode, setFitMode] = useState<'fit-page' | 'fit-width' | 'fit-height'>(
+    savedPrefs.fitMode ?? 'fit-page'
+  );
 
   // Persist ephemeral prefs to localStorage whenever they change
   useEffect(() => {
-    localStorage.setItem(localKey, JSON.stringify({ brightness, contrast }));
-  }, [brightness, contrast, localKey]);
+    localStorage.setItem(localKey, JSON.stringify({ brightness, contrast, fitMode }));
+  }, [brightness, contrast, fitMode, localKey]);
   
   const [loading, setLoading] = useState(true);
   const [loadingText, setLoadingText] = useState('Initializing reader...');
@@ -343,8 +349,10 @@ export default function MangaReader({
 
     const filterStyle = {
       filter: `brightness(${brightness}%) contrast(${contrast}%)`,
-      maxWidth: '100%',
-      maxHeight: '100%',
+      width: fitMode === 'fit-width' ? '100%' : 'auto',
+      height: fitMode === 'fit-height' ? '100%' : 'auto',
+      maxWidth: fitMode === 'fit-height' ? 'none' : '100%',
+      maxHeight: fitMode === 'fit-width' ? 'none' : '100%',
       objectFit: 'contain' as const,
     };
 
@@ -364,7 +372,14 @@ export default function MangaReader({
                 key={index} 
                 src={url} 
                 alt={`Manga Page ${index + 1}`} 
-                style={{ width: '100%', height: 'auto', display: 'block', ...filterStyle }}
+                style={{
+                  ...filterStyle,
+                  width: '100%',
+                  height: 'auto',
+                  maxWidth: '100%',
+                  maxHeight: 'none',
+                  display: 'block'
+                }}
               />
             );
           })}
@@ -380,8 +395,17 @@ export default function MangaReader({
       const rightUrl = getPageUrl(rightPageIndex);
       const leftUrl = getPageUrl(leftPageIndex);
 
-      const pageA = rightUrl ? <img src={rightUrl} alt="Page A" style={filterStyle} /> : <div style={{ flex: 1 }} />;
-      const pageB = leftUrl && leftPageIndex < pages.length ? <img src={leftUrl} alt="Page B" style={filterStyle} /> : <div style={{ flex: 1 }} />;
+      // In double-page mode, we always fit to page or fit to height so they fit side-by-side
+      const doublePageStyle = {
+        ...filterStyle,
+        maxWidth: '100%',
+        maxHeight: '100%',
+        width: 'auto',
+        height: 'auto',
+      };
+
+      const pageA = rightUrl ? <img src={rightUrl} alt="Page A" style={doublePageStyle} /> : <div style={{ flex: 1 }} />;
+      const pageB = leftUrl && leftPageIndex < pages.length ? <img src={leftUrl} alt="Page B" style={doublePageStyle} /> : <div style={{ flex: 1 }} />;
 
       return (
         <div style={{ display: 'flex', width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', gap: '16px' }}>
@@ -468,16 +492,64 @@ export default function MangaReader({
             </span>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
+            {/* View Mode Toggle Group */}
+            <ToggleGroup
+              className="max-lg:hidden"
+              value={viewMode}
+              onValueChange={(value: string) => {
+                if (value) {
+                  setViewMode(value as any);
+                  syncProgress(currentPage);
+                }
+              }}
+            >
+              <ToggleGroup.Item icon={<FeatherFile />} value="single-page">Single</ToggleGroup.Item>
+              <ToggleGroup.Item icon={<FeatherBookOpen />} value="double-page">Double</ToggleGroup.Item>
+              <ToggleGroup.Item icon={<FeatherScrollText />} value="webtoon">Webtoon</ToggleGroup.Item>
+            </ToggleGroup>
+
+            {/* Fit Mode Toggle Group */}
+            <ToggleGroup
+              className="max-lg:hidden"
+              value={fitMode}
+              onValueChange={(value: string) => {
+                if (value) {
+                  setFitMode(value as any);
+                }
+              }}
+            >
+              <ToggleGroup.Item value="fit-page">Fit Page</ToggleGroup.Item>
+              <ToggleGroup.Item value="fit-width">Fit Width</ToggleGroup.Item>
+              <ToggleGroup.Item value="fit-height">Fit Height</ToggleGroup.Item>
+            </ToggleGroup>
+
+            {/* Reading Direction Toggle Group */}
+            {viewMode !== 'webtoon' && (
+              <ToggleGroup
+                className="max-lg:hidden"
+                value={readingDirection}
+                onValueChange={(value: string) => {
+                  if (value) {
+                    setReadingDirection(value as any);
+                  }
+                }}
+              >
+                <ToggleGroup.Item value="rtl">RTL</ToggleGroup.Item>
+                <ToggleGroup.Item value="ltr">LTR</ToggleGroup.Item>
+              </ToggleGroup>
+            )}
+
+            <div className="flex h-6 w-px flex-none flex-col items-start bg-neutral-border mx-1 max-lg:hidden" style={{ backgroundColor: activeTheme.border }} />
+
             {/* Tuning Settings Dropdown */}
             <SubframeCore.DropdownMenu.Root>
               <SubframeCore.DropdownMenu.Trigger asChild>
-                <Button
-                  variant="neutral-secondary"
+                <IconButton
+                  variant="neutral-tertiary"
                   icon={<FeatherSettings />}
-                >
-                  Options
-                </Button>
+                  aria-label="Settings"
+                />
               </SubframeCore.DropdownMenu.Trigger>
               <SubframeCore.DropdownMenu.Portal>
                 <SubframeCore.DropdownMenu.Content
@@ -487,15 +559,15 @@ export default function MangaReader({
                   asChild
                 >
                   <div 
-                    className="flex w-80 flex-none flex-col items-start gap-4 rounded-xl border border-solid px-4 py-4 shadow-lg"
+                    className="flex w-80 flex-none flex-col items-start gap-4 rounded-xl border border-solid p-4 shadow-lg"
                     style={{
                       backgroundColor: '#1e293b',
                       borderColor: '#334155',
                       color: '#f8fafc',
                     }}
                   >
-                    {/* VIEW MODE */}
-                    <div className="flex w-full flex-col items-start gap-1.5">
+                    {/* VIEW MODE (only visible on mobile/tablet settings) */}
+                    <div className="flex w-full flex-col items-start gap-1.5 lg:hidden">
                       <span className="text-caption-bold font-caption-bold text-subtext-color" style={{ color: '#94a3b8' }}>
                         VIEW MODE
                       </span>
@@ -515,9 +587,29 @@ export default function MangaReader({
                       </ToggleGroup>
                     </div>
 
-                    {/* READING DIRECTION */}
+                    {/* FIT MODE */}
+                    <div className="flex w-full flex-col items-start gap-1.5 lg:hidden">
+                      <span className="text-caption-bold font-caption-bold text-subtext-color" style={{ color: '#94a3b8' }}>
+                        FIT MODE
+                      </span>
+                      <ToggleGroup
+                        className="h-auto w-full flex-none"
+                        value={fitMode}
+                        onValueChange={(value: string) => {
+                          if (value) {
+                            setFitMode(value as any);
+                          }
+                        }}
+                      >
+                        <ToggleGroup.Item value="fit-page">Page</ToggleGroup.Item>
+                        <ToggleGroup.Item value="fit-width">Width</ToggleGroup.Item>
+                        <ToggleGroup.Item value="fit-height">Height</ToggleGroup.Item>
+                      </ToggleGroup>
+                    </div>
+
+                    {/* READING DIRECTION (only visible on mobile/tablet settings) */}
                     {viewMode !== 'webtoon' && (
-                      <div className="flex w-full flex-col items-start gap-1.5">
+                      <div className="flex w-full flex-col items-start gap-1.5 lg:hidden">
                         <span className="text-caption-bold font-caption-bold text-subtext-color" style={{ color: '#94a3b8' }}>
                           READING DIRECTION
                         </span>
@@ -536,7 +628,7 @@ export default function MangaReader({
                       </div>
                     )}
 
-                    <div className="flex h-px w-full flex-none items-start bg-neutral-200" style={{ backgroundColor: '#334155' }} />
+                    <div className="flex h-px w-full flex-none items-start bg-neutral-200 lg:hidden" style={{ backgroundColor: '#334155' }} />
 
                     {/* BRIGHTNESS */}
                     <div className="flex w-full flex-col items-start gap-1.5">
@@ -605,9 +697,9 @@ export default function MangaReader({
               width: '100%',
               maxWidth: '96%',
               height: '100%',
-              overflow: viewMode === 'webtoon' ? 'auto' : 'hidden',
+              overflow: (viewMode === 'webtoon' || fitMode === 'fit-width') ? 'auto' : 'hidden',
               display: viewMode === 'webtoon' ? 'block' : 'flex',
-              justifyContent: viewMode === 'webtoon' ? 'flex-start' : 'center',
+              justifyContent: (viewMode === 'webtoon' || fitMode === 'fit-width') ? 'flex-start' : 'center',
               alignItems: viewMode === 'webtoon' ? 'stretch' : 'center',
               padding: viewMode === 'webtoon' ? '0' : '20px',
               transition: 'all 0.3s ease'

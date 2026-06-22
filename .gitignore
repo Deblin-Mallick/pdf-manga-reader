@@ -15,11 +15,17 @@ __pycache__/
 # IDE / Editor files
 .vscode/
 .idea/
+context7/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.swp
+.continue/
+.roo/
+.subframe/
+.rooignore
+.kilo/
 
 # OS generated files
 .DS_Store

@@ -11,12 +11,14 @@ import {
   FeatherBookOpen,
   FeatherChevronLeft,
   FeatherChevronRight,
+  FeatherFile,
   FeatherList,
   FeatherMessageSquare,
   FeatherMinus,
   FeatherPanelLeftClose,
   FeatherPlus,
   FeatherRows,
+  FeatherScrollText,
   FeatherSearch,
   FeatherStretchVertical,
   FeatherType,
@@ -143,6 +145,294 @@ function resolveRelativePath(basePath: string, relativePath: string): string {
   return baseParts.join('/');
 }
 
+interface EPUBChapterCanvasProps {
+  zip: JSZip;
+  pagePath: string;
+  chapterIndex: number;
+  settings: ReaderSettings;
+  onVisible: (index: number) => void;
+}
+
+function EPUBChapterCanvas({
+  zip,
+  pagePath,
+  chapterIndex,
+  settings,
+  onVisible,
+}: EPUBChapterCanvasProps) {
+  const [isNearViewport, setIsNearViewport] = useState(false);
+  const [pageHtml, setPageHtml] = useState<string>('');
+  const [height, setHeight] = useState<number>(800);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const blobUrlsRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsNearViewport(true);
+        }
+      },
+      { rootMargin: '1200px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          onVisible(chapterIndex);
+        }
+      },
+      { threshold: 0.15 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [chapterIndex, onVisible]);
+
+  useEffect(() => {
+    if (!isNearViewport) return;
+    
+    let cancelled = false;
+    
+    const loadContent = async () => {
+      try {
+        const pageFile = zip.files[pagePath];
+        if (!pageFile) return;
+        
+        let htmlContent = await pageFile.async('text');
+        if (cancelled) return;
+        
+        blobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+        blobUrlsRef.current = [];
+
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(htmlContent, 'text/html');
+
+        const images = doc.querySelectorAll('img');
+        for (let i = 0; i < images.length; i++) {
+          const img = images[i];
+          const src = img.getAttribute('src');
+          if (src) {
+            const resolvedPath = resolveRelativePath(pagePath, src);
+            const imgFile = zip.files[resolvedPath];
+            if (imgFile) {
+              const blob = await imgFile.async('blob');
+              if (cancelled) return;
+              const blobUrl = URL.createObjectURL(blob);
+              blobUrlsRef.current.push(blobUrl);
+              img.setAttribute('src', blobUrl);
+            }
+          }
+        }
+
+        const svgImages = doc.querySelectorAll('image');
+        for (let i = 0; i < svgImages.length; i++) {
+          const img = svgImages[i];
+          const href = img.getAttribute('href') || img.getAttribute('xlink:href');
+          if (href) {
+            const resolvedPath = resolveRelativePath(pagePath, href);
+            const imgFile = zip.files[resolvedPath];
+            if (imgFile) {
+              const blob = await imgFile.async('blob');
+              if (cancelled) return;
+              const blobUrl = URL.createObjectURL(blob);
+              blobUrlsRef.current.push(blobUrl);
+              img.setAttribute('href', blobUrl);
+              img.setAttribute('xlink:href', blobUrl);
+            }
+          }
+        }
+
+        const activeTheme = themeStyles[settings.theme];
+        let fontStack = "";
+        if (settings.fontFamily === 'Literata') {
+          fontStack = "'Literata', Georgia, serif";
+        } else if (settings.fontFamily === 'Georgia') {
+          fontStack = "Georgia, serif";
+        } else if (settings.fontFamily === 'Merriweather') {
+          fontStack = "'Merriweather', serif";
+        } else {
+          fontStack = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+        }
+
+        const googleFonts = `<link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,200..900;1,7..72,200..900&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">`;
+
+        const lineHeightVal = settings.lineHeight === 'tight' ? 1.3 : settings.lineHeight === 'loose' ? 2.0 : 1.6;
+        
+        const marginPadding = settings.margin === 'narrow' 
+          ? '40px 20px 40px 20px'
+          : settings.margin === 'wide' 
+            ? '40px 120px 40px 120px' 
+            : '40px 60px 40px 60px';
+        
+        const maxWidth = settings.margin === 'narrow' 
+          ? '800px' 
+          : settings.margin === 'wide' 
+            ? '600px' 
+            : '700px';
+
+        const styleInjection = `
+          ${googleFonts}
+          <style>
+            body {
+              background-color: ${activeTheme.cardBg} !important;
+              color: ${activeTheme.text} !important;
+              font-family: ${fontStack} !important;
+              font-size: ${settings.fontSize}px !important;
+              line-height: ${lineHeightVal} !important;
+              padding: ${marginPadding} !important;
+              margin: 0 auto !important;
+              max-width: ${maxWidth} !important;
+              transition: background-color 0.25s ease, color 0.25s ease !important;
+              overflow: hidden !important;
+            }
+            p {
+              margin-bottom: 1.25em !important;
+              text-align: justify !important;
+            }
+            h1, h2, h3, h4, h5, h6 {
+              color: ${activeTheme.heading} !important;
+              margin-top: 1.6em !important;
+              margin-bottom: 0.8em !important;
+              font-weight: 600 !important;
+              line-height: 1.3 !important;
+            }
+            hr {
+              border: 0 !important;
+              border-top: 1px solid ${activeTheme.hr} !important;
+              margin: 2em 0 !important;
+            }
+            img, svg {
+              max-width: 100% !important;
+              height: auto !important;
+              display: block !important;
+              margin: 1.5em auto !important;
+              border-radius: 8px !important;
+              box-shadow: 0 4px 20px rgba(0,0,0,0.15) !important;
+            }
+            .table-container, pre {
+              background-color: ${settings.theme === 'dark' ? '#1e293b' : settings.theme === 'sepia' ? '#eedebc' : '#f8fafc'} !important;
+              border: 1px solid ${activeTheme.border} !important;
+            }
+            table {
+              color: ${activeTheme.text} !important;
+            }
+            th {
+              background-color: ${settings.theme === 'dark' ? '#0f172a' : settings.theme === 'sepia' ? '#e5cf9c' : '#e2e8f0'} !important;
+              color: ${activeTheme.heading} !important;
+              border-bottom: 1px solid ${activeTheme.border} !important;
+            }
+            td {
+              border-bottom: 1px solid ${activeTheme.border} !important;
+            }
+            code {
+              color: ${settings.theme === 'dark' ? '#38bdf8' : settings.theme === 'sepia' ? '#a05a2c' : '#0284c7'} !important;
+            }
+            blockquote {
+              border-left: 4px solid ${settings.theme === 'sepia' ? '#a05a2c' : '#8b5cf6'} !important;
+              color: ${settings.theme === 'sepia' ? '#705335' : settings.theme === 'dark' ? '#94a3b8' : '#4b5563'} !important;
+              padding-left: 1em !important;
+              margin-left: 0 !important;
+              font-style: italic !important;
+            }
+          </style>
+        `;
+
+        let updatedHtml = doc.documentElement.outerHTML;
+        if (updatedHtml.includes('</head>')) {
+          updatedHtml = updatedHtml.replace('</head>', `${styleInjection}</head>`);
+        } else {
+          updatedHtml = `<head>${styleInjection}</head>${updatedHtml}`;
+        }
+
+        if (!cancelled) {
+          setPageHtml(updatedHtml);
+        }
+      } catch (err) {
+        console.error('Error loading chapter page in scroll mode:', err);
+      }
+    };
+    
+    loadContent();
+    
+    return () => {
+      cancelled = true;
+      blobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [isNearViewport, zip, pagePath, settings.fontSize, settings.lineHeight, settings.theme, settings.fontFamily, settings.margin]);
+
+  const handleIframeLoad = () => {
+    const iframe = iframeRef.current;
+    if (!iframe || !iframe.contentWindow || !iframe.contentDocument) return;
+    const doc = iframe.contentDocument;
+    
+    const body = doc.body;
+    if (body) {
+      const initialHeight = body.scrollHeight || doc.documentElement.scrollHeight;
+      if (initialHeight > 0) {
+        setHeight(initialHeight + 40);
+      }
+      
+      const resizeObserver = new ResizeObserver(() => {
+        const newHeight = body.scrollHeight || doc.documentElement.scrollHeight;
+        if (newHeight > 0) {
+          setHeight(newHeight + 40);
+        }
+      });
+      resizeObserver.observe(body);
+      
+      return () => resizeObserver.disconnect();
+    }
+  };
+
+  const activeTheme = themeStyles[settings.theme];
+
+  return (
+    <div
+      ref={wrapRef}
+      id={`epub-chapter-${chapterIndex}`}
+      className="w-full flex justify-center mb-6"
+      style={{ minHeight: '300px' }}
+    >
+      {isNearViewport && pageHtml ? (
+        <iframe
+          ref={iframeRef}
+          srcDoc={pageHtml}
+          onLoad={handleIframeLoad}
+          className="border-none overflow-hidden bg-transparent"
+          style={{ width: '100%', height: `${height}px` }}
+          title={`EPUB Chapter ${chapterIndex}`}
+          scrolling="no"
+        />
+      ) : (
+        <div className="flex flex-col items-center justify-center p-8 w-full max-w-[700px] border border-solid rounded-xl animate-pulse"
+             style={{
+               borderColor: activeTheme.border,
+               backgroundColor: activeTheme.cardBg,
+               height: '400px'
+             }}>
+          <div className="h-6 w-32 bg-neutral-300 rounded mb-4" />
+          <div className="h-4 w-64 bg-neutral-200 rounded mb-2" />
+          <div className="h-4 w-48 bg-neutral-200 rounded" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function sanitizeXmlText(xmlText: string): string {
+  return xmlText.replace(/&(?!(amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)/g, '&amp;');
+}
+
 export default function EPUBReader({
   book,
   user,
@@ -173,6 +463,30 @@ export default function EPUBReader({
 
   const [loading, setLoading] = useState<boolean>(true);
   const [loadingText, setLoadingText] = useState<string>('Downloading EPUB...');
+
+  const [scrollMode, setScrollMode] = useState<boolean>(savedPrefs.scrollMode ?? false);
+  const isProgrammaticScrollRef = useRef<boolean>(false);
+
+  const jumpToPage = useCallback((page: number) => {
+    const clamped = Math.max(1, Math.min(spineHrefs.length, page));
+    setCurrentPage(clamped);
+    if (scrollMode) {
+      isProgrammaticScrollRef.current = true;
+      const el = document.getElementById(`epub-chapter-${clamped}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        setTimeout(() => { isProgrammaticScrollRef.current = false; }, 650);
+      } else {
+        isProgrammaticScrollRef.current = false;
+      }
+    }
+  }, [scrollMode, spineHrefs.length]);
+
+  const handleVisiblePage = useCallback((page: number) => {
+    if (!isProgrammaticScrollRef.current) {
+      setCurrentPage(page);
+    }
+  }, []);
   
   // Collapsible Sidebar & Tabs
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
@@ -188,8 +502,8 @@ export default function EPUBReader({
 
   // Persist all reader settings to localStorage on change
   useEffect(() => {
-    localStorage.setItem(localKey, JSON.stringify(settings));
-  }, [settings, localKey]);
+    localStorage.setItem(localKey, JSON.stringify({ ...settings, scrollMode }));
+  }, [settings, scrollMode, localKey]);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const blobUrlsRef = useRef<string[]>([]);
@@ -262,7 +576,7 @@ export default function EPUBReader({
         // Parse OPF
         const opfText = await loadedZip.files[opfKey].async('text');
         const parser = new DOMParser();
-        const opfDoc = parser.parseFromString(opfText, 'text/xml');
+        const opfDoc = parser.parseFromString(sanitizeXmlText(opfText), 'text/xml');
 
         const manifestMap: { [id: string]: string } = {};
         const items = opfDoc.getElementsByTagName('item');
@@ -332,7 +646,7 @@ export default function EPUBReader({
             const ncxFile = loadedZip.files[ncxPath];
             if (ncxFile) {
               const ncxText = await ncxFile.async('text');
-              const ncxDoc = parser.parseFromString(ncxText, 'text/xml');
+              const ncxDoc = parser.parseFromString(sanitizeXmlText(ncxText), 'text/xml');
               const navPoints = ncxDoc.getElementsByTagName('navPoint');
               const tocTemp: TOCItem[] = [];
               for (let i = 0; i < navPoints.length; i++) {
@@ -599,15 +913,15 @@ export default function EPUBReader({
   // Navigation handlers
   const handleNextPage = useCallback(() => {
     if (currentPage < spineHrefs.length) {
-      setCurrentPage((prev: number) => prev + 1);
+      jumpToPage(currentPage + 1);
     }
-  }, [currentPage, spineHrefs.length]);
+  }, [currentPage, spineHrefs.length, jumpToPage]);
 
   const handlePrevPage = useCallback(() => {
     if (currentPage > 1) {
-      setCurrentPage((prev: number) => prev - 1);
+      jumpToPage(currentPage - 1);
     }
-  }, [currentPage]);
+  }, [currentPage, jumpToPage]);
 
   // Keyboard Navigation
   useEffect(() => {
@@ -739,15 +1053,24 @@ export default function EPUBReader({
         transition: 'all 0.3s ease'
       }}
     >
+      {/* MOBILE DRAWER BACKDROP */}
+      {isSidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm hidden mobile:block"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* LEFT SIDEBAR */}
       {isSidebarOpen && (
         <div 
-          className="flex w-72 flex-none flex-col items-start self-stretch border-r border-solid mobile:hidden"
+          className="flex w-72 flex-none flex-col items-start self-stretch border-r border-solid mobile:fixed mobile:inset-y-0 mobile:left-0 mobile:z-50 mobile:shadow-2xl"
           style={{
             backgroundColor: activeTheme.sidebarBg,
             borderColor: activeTheme.border,
             color: activeTheme.sidebarText,
-            transition: 'all 0.3s ease'
+            transition: 'all 0.3s ease',
+            zIndex: 50,
           }}
         >
           <div className="flex w-full items-center gap-2 border-b border-solid px-4 py-3" style={{ borderColor: activeTheme.border }}>
@@ -763,17 +1086,17 @@ export default function EPUBReader({
             />
           </div>
 
-          <Tabs className="px-2 pt-2">
-            <Tabs.Item active={sidebarTab === 'toc'} icon={<FeatherList />} onClick={() => setSidebarTab('toc')}>
+          <Tabs className="px-1 pt-2">
+            <Tabs.Item className="px-1.5 gap-1" active={sidebarTab === 'toc'} icon={<FeatherList />} onClick={() => setSidebarTab('toc')}>
               TOC
             </Tabs.Item>
-            <Tabs.Item active={sidebarTab === 'search'} icon={<FeatherSearch />} onClick={() => setSidebarTab('search')}>
-              Search
+            <Tabs.Item className="px-1.5 gap-1" active={sidebarTab === 'search'} icon={<FeatherSearch />} onClick={() => setSidebarTab('search')}>
+              Find
             </Tabs.Item>
-            <Tabs.Item active={sidebarTab === 'bookmarks'} icon={<FeatherBookmark />} onClick={() => setSidebarTab('bookmarks')}>
-              Bookmarks
+            <Tabs.Item className="px-1.5 gap-1" active={sidebarTab === 'bookmarks'} icon={<FeatherBookmark />} onClick={() => setSidebarTab('bookmarks')}>
+              Marks
             </Tabs.Item>
-            <Tabs.Item active={sidebarTab === 'notes'} icon={<FeatherMessageSquare />} onClick={() => setSidebarTab('notes')}>
+            <Tabs.Item className="px-1.5 gap-1" active={sidebarTab === 'notes'} icon={<FeatherMessageSquare />} onClick={() => setSidebarTab('notes')}>
               Notes
             </Tabs.Item>
           </Tabs>
@@ -791,7 +1114,7 @@ export default function EPUBReader({
                   <div
                     key={index}
                     onClick={() => {
-                      if (spineIndex > 0) setCurrentPage(spineIndex);
+                      if (spineIndex > 0) jumpToPage(spineIndex);
                     }}
                     className={`flex w-full items-center gap-3 rounded-md px-3 py-2 cursor-pointer transition-all ${
                       isActive
@@ -850,7 +1173,7 @@ export default function EPUBReader({
                   {searchResults.map((res, i) => (
                     <div
                       key={i}
-                      onClick={() => setCurrentPage(res.chapterIndex)}
+                      onClick={() => jumpToPage(res.chapterIndex)}
                       className="flex w-full flex-col items-start gap-1 rounded-md border border-solid p-3 cursor-pointer hover:bg-neutral-100 transition-all"
                       style={{
                         borderColor: activeTheme.border,
@@ -903,7 +1226,7 @@ export default function EPUBReader({
                       }}
                     >
                       <div
-                        onClick={() => setCurrentPage(b.chapterIndex)}
+                        onClick={() => jumpToPage(b.chapterIndex)}
                         className="flex grow flex-col items-start gap-1 cursor-pointer"
                       >
                         <span className="text-caption-bold font-caption-bold text-default-font" style={{ color: activeTheme.heading }}>
@@ -972,7 +1295,7 @@ export default function EPUBReader({
                     >
                       <div className="flex w-full items-center justify-between">
                         <span
-                          onClick={() => setCurrentPage(n.chapterIndex)}
+                          onClick={() => jumpToPage(n.chapterIndex)}
                           className="text-caption-bold font-caption-bold text-brand-700 cursor-pointer"
                         >
                           {n.chapterTitle}
@@ -1171,6 +1494,25 @@ export default function EPUBReader({
                       </ToggleGroup>
                     </div>
 
+                    {/* SCROLL MODE */}
+                    <div className="flex w-full flex-col items-start gap-1.5">
+                      <span className="text-caption-bold font-caption-bold text-subtext-color" style={{ color: settings.theme === 'light' ? '#64748b' : settings.theme === 'sepia' ? '#8c7662' : '#94a3b8' }}>
+                        READING MODE
+                      </span>
+                      <ToggleGroup
+                        className="h-auto w-full flex-none"
+                        value={scrollMode ? 'scroll' : 'page'}
+                        onValueChange={(value: string) => {
+                          if (value) {
+                            setScrollMode(value === 'scroll');
+                          }
+                        }}
+                      >
+                        <ToggleGroup.Item icon={<FeatherFile />} value="page">Page</ToggleGroup.Item>
+                        <ToggleGroup.Item icon={<FeatherScrollText />} value="scroll">Scroll</ToggleGroup.Item>
+                      </ToggleGroup>
+                    </div>
+
                     <div className="flex h-px w-full flex-none items-start bg-neutral-200" style={{ backgroundColor: settings.theme === 'light' ? '#e2e8f0' : settings.theme === 'sepia' ? '#e4dcc4' : '#334155' }} />
 
                     {/* THEME */}
@@ -1230,6 +1572,19 @@ export default function EPUBReader({
                 <div className="h-10 w-10 animate-spin rounded-full border-3 border-solid border-brand-200 border-t-brand-600" />
                 <p className="text-body font-body text-subtext-color">{loadingText}</p>
               </div>
+            ) : scrollMode ? (
+              <div className="w-full h-full overflow-y-auto flex flex-col items-center px-4 py-4" style={{ scrollBehavior: 'smooth' }}>
+                {spineHrefs.map((href, index) => (
+                  <EPUBChapterCanvas
+                    key={href}
+                    zip={zip!}
+                    pagePath={href}
+                    chapterIndex={index + 1}
+                    settings={settings}
+                    onVisible={handleVisiblePage}
+                  />
+                ))}
+              </div>
             ) : (
               <iframe
                 ref={iframeRef}
@@ -1266,15 +1621,14 @@ export default function EPUBReader({
                     Page {currentPage} of {spineHrefs.length} ({percentComplete}%)
                   </span>
                 </div>
-                <div 
-                  onClick={(e) => {
-                    if (spineHrefs.length === 0) return;
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const clickX = e.clientX - rect.left;
-                    const percentage = clickX / rect.width;
-                    const targetPage = Math.max(1, Math.min(spineHrefs.length, Math.round(percentage * spineHrefs.length)));
-                    setCurrentPage(targetPage);
-                  }}
+                <div                    onClick={(e) => {
+                      if (spineHrefs.length === 0) return;
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const clickX = e.clientX - rect.left;
+                      const percentage = clickX / rect.width;
+                      const targetPage = Math.max(1, Math.min(spineHrefs.length, Math.round(percentage * spineHrefs.length)));
+                      jumpToPage(targetPage);
+                    }}
                   className="flex w-full items-center py-1 relative cursor-pointer"
                 >
                   <div className="flex h-0.5 grow shrink-0 basis-0 items-start rounded-full bg-neutral-200" style={{ backgroundColor: activeTheme.border }}>

@@ -20,6 +20,7 @@ import {
   FeatherPanelLeftClose,
   FeatherSun,
   FeatherBookOpen,
+  FeatherSettings,
 } from '@subframe/core';
 
 interface PDFReaderProps {
@@ -184,6 +185,20 @@ function PDFPageCanvas({
   );
 }
 
+// ─── Thumbnail placeholder skeleton ─────────────────────────────────────────
+function PDFThumbnailPlaceholder() {
+  return (
+    <div className="flex flex-col items-center justify-center gap-1.5 w-full h-full p-2 bg-[#0d0d12] rounded-md animate-pulse">
+      <div className="w-10 h-14 bg-neutral-800/80 rounded border border-neutral-700/30 flex flex-col justify-between p-2 shadow-inner">
+        <div className="w-full h-1 bg-neutral-700/60 rounded-full" />
+        <div className="w-4/5 h-1 bg-neutral-700/60 rounded-full" />
+        <div className="w-full h-1 bg-neutral-700/60 rounded-full" />
+        <div className="w-2/3 h-1 bg-neutral-700/60 rounded-full" />
+      </div>
+    </div>
+  );
+}
+
 // ─── Thumbnail canvas renderer ──────────────────────────────────────────────
 function PDFThumbnailCanvas({
   pdf,
@@ -267,18 +282,17 @@ function PDFThumbnailCanvas({
       {rendered ? (
         <canvas
           ref={canvasRef}
-          className="shadow-sm"
+          className="shadow-sm transition-all duration-300 ease-out group-hover/thumb:scale-[1.06] group-hover/thumb:shadow-md"
           style={{
             maxHeight: '100%',
             maxWidth: '100%',
             objectFit: 'contain',
             borderRadius: '2px',
-            transition: 'filter 0.3s ease',
             filter: isInverted ? 'invert(0.9) hue-rotate(180deg)' : 'none',
           }}
         />
       ) : (
-        <FeatherFileText className="text-heading-3 font-heading-3 text-neutral-600 animate-pulse" />
+        <PDFThumbnailPlaceholder />
       )}
     </div>
   );
@@ -560,6 +574,15 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [totalPages, scrollMode, currentPage, jumpToPage]);
 
+  // ── Auto-scroll active thumbnail into view in Pages panel ───────────────────
+  useEffect(() => {
+    if (sidebarTab !== 'pages' || !isSidebarOpen) return;
+    const thumbEl = document.getElementById(`sidebar-thumb-${currentPage}`);
+    if (thumbEl) {
+      thumbEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [currentPage, sidebarTab, isSidebarOpen]);
+
   const activeTheme = themeStyles.dark;
   const percentComplete = Math.round(((currentPage) / (totalPages || 1)) * 100);
 
@@ -574,15 +597,23 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
         transition: 'all 0.3s ease',
       }}
     >
+      {/* MOBILE DRAWER BACKDROP */}
+      {isSidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm hidden mobile:block"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* LEFT SIDEBAR */}
       {isSidebarOpen && (
         <div
-          className="flex w-64 flex-none flex-col items-start self-stretch border-r border-solid mobile:hidden"
+          className="flex w-64 flex-none flex-col items-start self-stretch border-r border-solid mobile:fixed mobile:inset-y-0 mobile:left-0 mobile:z-50 mobile:shadow-2xl"
           style={{
             backgroundColor: activeTheme.sidebarBg,
             borderColor: activeTheme.border,
             color: activeTheme.sidebarText,
-            zIndex: 10,
+            zIndex: 50,
           }}
         >
           <div className="flex w-full items-center gap-2 border-b border-solid px-4 py-3" style={{ borderColor: activeTheme.border }}>
@@ -614,6 +645,7 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
                 return (
                   <div
                     key={pageNum}
+                    id={`sidebar-thumb-${pageNum}`}
                     onClick={() => jumpToPage(pageNum)}
                     className="flex flex-col items-center gap-1 self-stretch cursor-pointer group/thumb"
                   >
@@ -848,11 +880,11 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
               aria-label="Toggle night mode"
             />
 
-            <div className="flex h-6 w-px flex-none flex-col items-start bg-neutral-border mx-1 mobile:hidden" style={{ backgroundColor: activeTheme.border }} />
+            <div className="flex h-6 w-px flex-none flex-col items-start bg-neutral-border mx-1 max-lg:hidden" style={{ backgroundColor: activeTheme.border }} />
 
             {/* Scroll Mode Toggle */}
             <ToggleGroup
-              className="mobile:hidden"
+              className="max-lg:hidden"
               value={scrollMode ? 'scroll' : 'page'}
               onValueChange={(value: string) => {
                 if (value) {
@@ -864,8 +896,22 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
               <ToggleGroup.Item icon={<FeatherScrollText />} value="scroll" />
             </ToggleGroup>
 
+            {/* Fit Mode Toggle */}
+            <ToggleGroup
+              className="max-lg:hidden"
+              value={viewMode}
+              onValueChange={(value: string) => {
+                if (value) {
+                  setViewMode(value);
+                }
+              }}
+            >
+              <ToggleGroup.Item value="fit-width">Fit Width</ToggleGroup.Item>
+              <ToggleGroup.Item value="fit-height">Fit Height</ToggleGroup.Item>
+            </ToggleGroup>
+
             {/* Zoom Controls */}
-            <div className="flex items-center gap-1 rounded-md px-1 py-0.5 mobile:hidden" style={{ backgroundColor: '#0f172a' }}>
+            <div className="flex items-center gap-1 rounded-md px-1 py-0.5 max-lg:hidden" style={{ backgroundColor: '#0f172a' }}>
               <IconButton
                 variant="neutral-tertiary"
                 size="small"
@@ -881,6 +927,85 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
                 icon={<FeatherPlus />}
                 onClick={() => setZoom((z) => Math.min(3.0, z + 0.25))}
               />
+            </div>
+
+            {/* Mobile Display Settings Menu */}
+            <div className="lg:hidden">
+              <SubframeCore.DropdownMenu.Root>
+                <SubframeCore.DropdownMenu.Trigger asChild>
+                  <IconButton
+                    variant="neutral-tertiary"
+                    icon={<FeatherSettings />}
+                    aria-label="Display Settings"
+                  />
+                </SubframeCore.DropdownMenu.Trigger>
+                <SubframeCore.DropdownMenu.Portal>
+                  <SubframeCore.DropdownMenu.Content
+                    side="bottom"
+                    align="end"
+                    sideOffset={6}
+                    asChild
+                  >
+                    <div
+                      className="flex w-64 flex-none flex-col items-start gap-4 rounded-xl border border-solid p-4 shadow-lg bg-[#1e293b] border-[#334155] text-[#f8fafc] z-50"
+                    >
+                      <span className="text-caption-bold font-caption-bold text-neutral-400">
+                        DISPLAY OPTIONS
+                      </span>
+                      
+                      {/* Scroll Mode */}
+                      <div className="flex w-full items-center justify-between gap-2">
+                        <span className="text-body text-neutral-300">Scroll Mode</span>
+                        <ToggleGroup
+                          value={scrollMode ? 'scroll' : 'page'}
+                          onValueChange={(value: string) => {
+                            if (value) setScrollMode(value === 'scroll');
+                          }}
+                        >
+                          <ToggleGroup.Item icon={<FeatherFile />} value="page" />
+                          <ToggleGroup.Item icon={<FeatherScrollText />} value="scroll" />
+                        </ToggleGroup>
+                      </div>
+
+                      {/* Fit Mode */}
+                      <div className="flex w-full items-center justify-between gap-2">
+                        <span className="text-body text-neutral-300">Fit Page</span>
+                        <ToggleGroup
+                          value={viewMode}
+                          onValueChange={(value: string) => {
+                            if (value) setViewMode(value);
+                          }}
+                        >
+                          <ToggleGroup.Item value="fit-width">Width</ToggleGroup.Item>
+                          <ToggleGroup.Item value="fit-height">Height</ToggleGroup.Item>
+                        </ToggleGroup>
+                      </div>
+
+                      {/* Zoom Levels */}
+                      <div className="flex w-full items-center justify-between gap-2">
+                        <span className="text-body text-neutral-300">Zoom</span>
+                        <div className="flex items-center gap-1 rounded-md px-1 py-0.5 bg-[#0f172a]">
+                          <IconButton
+                            variant="neutral-tertiary"
+                            size="small"
+                            icon={<FeatherMinus />}
+                            onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}
+                          />
+                          <span className="w-10 flex-none text-caption-bold font-caption-bold text-default-font text-center text-white">
+                            {Math.round(zoom * 100)}%
+                          </span>
+                          <IconButton
+                            variant="neutral-tertiary"
+                            size="small"
+                            icon={<FeatherPlus />}
+                            onClick={() => setZoom((z) => Math.min(3.0, z + 0.25))}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </SubframeCore.DropdownMenu.Content>
+                </SubframeCore.DropdownMenu.Portal>
+              </SubframeCore.DropdownMenu.Root>
             </div>
 
             <IconButton

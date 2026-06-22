@@ -41,5 +41,6 @@ def mock_db_and_paths(monkeypatch, tmp_path):
 @pytest.fixture
 def client():
     from app.main import app
-    with TestClient(app) as test_client:
-        yield test_client
+    from fastapi.testclient import TestClient
+    test_client = TestClient(app)
+    yield test_client

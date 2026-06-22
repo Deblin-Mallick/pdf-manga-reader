@@ -169,6 +169,18 @@ export default function Dashboard({
   const [activeTab, setActiveTab] = useState<TabMode>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 768) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
   const [favorites, setFavorites] = useState<Record<string, boolean>>(() => {
     try {
       const raw = localStorage.getItem('reader_favorites');
@@ -418,7 +430,8 @@ export default function Dashboard({
               onChange={(event) => setSearchQuery(event.target.value)}
             />
           </TextField>
-          <div className="flex flex-1 items-center justify-end gap-3">
+          <div className="flex-grow mobile:hidden" />
+          <div className="flex items-center justify-end gap-3 shrink-0">
             <Select
               className="mobile:hidden"
               variant="filled"
@@ -780,17 +793,34 @@ function GridBookCard({
           </div>
         )}
       </div>
-      {/* Action buttons on hover */}
-      <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 -mt-1 px-0.5">
+      {/* Action buttons - always visible on mobile/touch, hover on desktop */}
+      <div className="flex items-center gap-1 opacity-100 md:opacity-0 transition-opacity md:group-hover:opacity-100 md:group-focus-within:opacity-100 -mt-1 px-0.5">
         <IconButton
           icon={<FeatherHeart className={isFavorite ? 'fill-red-500 text-red-500' : 'text-neutral-400'} />}
           aria-label={isFavorite ? `Unfavorite ${book.title}` : `Favorite ${book.title}`}
-          onClick={onToggleFavorite}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleFavorite();
+          }}
         />
         {onConvert && (
-          <IconButton icon={<RefreshCw size={13} />} aria-label={`Convert ${book.title} to EPUB`} onClick={onConvert} />
+          <IconButton
+            icon={<RefreshCw size={13} />}
+            aria-label={`Convert ${book.title} to EPUB`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onConvert();
+            }}
+          />
         )}
-        <IconButton icon={<Trash2 size={13} />} aria-label={`Delete ${book.title}`} onClick={onDelete} />
+        <IconButton
+          icon={<Trash2 size={13} />}
+          aria-label={`Delete ${book.title}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+        />
       </div>
     </article>
   );
@@ -846,16 +876,34 @@ function ListBookCard({
           </div>
         )}
       </div>
-      <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+      {/* Action buttons - always visible on mobile/touch, hover on desktop */}
+      <div className="flex items-center gap-1 opacity-100 md:opacity-0 transition-opacity md:group-hover:opacity-100">
         <IconButton
           icon={<FeatherHeart className={isFavorite ? 'fill-red-500 text-red-500' : 'text-neutral-400'} />}
           aria-label={isFavorite ? `Unfavorite ${book.title}` : `Favorite ${book.title}`}
-          onClick={onToggleFavorite}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleFavorite();
+          }}
         />
         {onConvert && (
-          <IconButton icon={<RefreshCw size={13} />} aria-label={`Convert ${book.title} to EPUB`} onClick={onConvert} />
+          <IconButton
+            icon={<RefreshCw size={13} />}
+            aria-label={`Convert ${book.title} to EPUB`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onConvert();
+            }}
+          />
         )}
-        <IconButton icon={<Trash2 size={13} />} aria-label={`Delete ${book.title}`} onClick={onDelete} />
+        <IconButton
+          icon={<Trash2 size={13} />}
+          aria-label={`Delete ${book.title}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+        />
       </div>
     </article>
   );

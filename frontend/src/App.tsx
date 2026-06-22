@@ -93,6 +93,7 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const googleInitializedRef = useRef<string | null>(null);
 
   const [token, setToken] = useState<string | null>(
     () => localStorage.getItem('reader_jwt') || loadGuestSession()
@@ -156,11 +157,14 @@ export default function App() {
   const initGoogleLogin = useCallback(() => {
     if (window.google && googleClientId) {
       try {
-        window.google.accounts.id.initialize({
-          client_id: googleClientId,
-          callback: handleGoogleCredentialResponse,
-          auto_select: false,
-        });
+        if (googleInitializedRef.current !== googleClientId) {
+          window.google.accounts.id.initialize({
+            client_id: googleClientId,
+            callback: handleGoogleCredentialResponse,
+            auto_select: false,
+          });
+          googleInitializedRef.current = googleClientId;
+        }
 
         const btnDiv = document.getElementById('google-signin-btn');
         if (btnDiv) {
@@ -430,12 +434,12 @@ export default function App() {
                       onSelectBook={(book) => navigate(`/book/${book.id}`)}
                       onUploadSuccess={handleBookUploadSuccess}
                       onDeleteBook={(id) => {
-                        if (confirm('Are you sure you want to delete this book?')) {
+                        if (window.confirm('Are you sure you want to delete this book?')) {
                           deleteBookMutation.mutate(id);
                         }
                       }}
                       onConvertBook={(id) => {
-                        if (confirm('Would you like to convert this PDF book to EPUB format?')) {
+                        if (window.confirm('Would you like to convert this PDF book to EPUB format?')) {
                           convertBookMutation.mutate(id);
                         }
                       }}

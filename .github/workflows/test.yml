@@ -42,13 +42,20 @@ jobs:
           cd backend
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pytest anyio httpx
 
       - name: Lint and Syntax Check
         run: |
           cd backend
           python -m py_compile app/main.py app/db.py app/auth.py app/compression.py
 
+      - name: Run Backend Tests
+        run: |
+          cd backend
+          python -m pytest tests/
+
   docker:
+    needs: [frontend, backend]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

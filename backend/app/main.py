@@ -40,6 +40,36 @@ COVERS_DIR = os.path.join(BASE_DIR, "covers")
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 os.makedirs(COVERS_DIR, exist_ok=True)
 
+LIBRARY_STORAGE_DIR = "/mnt/library_storage"
+
+def get_storage_path(book_id: str, book_type: str) -> str:
+    if book_type == "epub":
+        return os.path.join(LIBRARY_STORAGE_DIR, "binaries", "epubs", f"{book_id}.epub")
+    elif book_type == "pdf":
+        return os.path.join(LIBRARY_STORAGE_DIR, "binaries", "pdfs", f"{book_id}.pdf")
+    elif book_type in ["manga", "cbz", "zip"]:
+        return os.path.join(LIBRARY_STORAGE_DIR, "manga", book_id)
+    else:
+        return os.path.join(LIBRARY_STORAGE_DIR, "binaries", f"{book_id}.{book_type}")
+
+def sanitize_path_segment(name: str) -> str:
+    import re
+    sanitized = re.sub(r'[^a-zA-Z0-9_\-]', '_', name)
+    return sanitized if sanitized else "default"
+
+def delete_book_files_from_storage(book_id: str, book_type: str):
+    import shutil
+    path = get_storage_path(book_id, book_type)
+    try:
+        if book_type in ["manga", "cbz", "zip"]:
+            if os.path.exists(path):
+                shutil.rmtree(path)
+        else:
+            if os.path.exists(path):
+                os.remove(path)
+    except OSError as e:
+        print(f"Error deleting book {book_id} from storage: {e}")
+
 def natural_sort_key(s):
     return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
 
@@ -140,16 +170,14 @@ def cleanup_expired_guests():
         with get_db() as conn:
             # 1. Fetch books to delete from disk
             books = conn.execute("""
-                SELECT id, file_path, cover_path FROM books 
+                SELECT id, type, cover_path FROM books 
                 WHERE user_id LIKE 'guest_%' AND last_read_at < ?;
             """, (threshold,)).fetchall()
             
             deleted_count = 0
             for book in books:
-                file_path = os.path.join(UPLOADS_DIR, book["file_path"])
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-                    deleted_count += 1
+                delete_book_files_from_storage(book["id"], book["type"])
+                deleted_count += 1
                 if book["cover_path"]:
                     cover_filename = os.path.basename(book["cover_path"])
                     cover_path = os.path.join(COVERS_DIR, cover_filename)
@@ -169,6 +197,13 @@ def cleanup_expired_guests():
 async def lifespan(app: FastAPI):
     # Initialize SQLite database
     init_db()
+    # Ensure library storage directories exist
+    try:
+        os.makedirs(os.path.join(LIBRARY_STORAGE_DIR, "binaries", "epubs"), exist_ok=True)
+        os.makedirs(os.path.join(LIBRARY_STORAGE_DIR, "binaries", "pdfs"), exist_ok=True)
+        os.makedirs(os.path.join(LIBRARY_STORAGE_DIR, "manga"), exist_ok=True)
+    except OSError as e:
+        print(f"Warning: Failed to initialize storage directories: {e}")
     # Cleanup expired guest folders
     cleanup_expired_guests()
     yield
@@ -328,14 +363,12 @@ async def logout(user_id: str = Depends(get_current_user_id)):
             with get_db() as conn:
                 # 1. Find and delete files
                 books = conn.execute(
-                    "SELECT id, file_path, cover_path FROM books WHERE user_id = ?;", 
+                    "SELECT id, type, cover_path FROM books WHERE user_id = ?;", 
                     (user_id,)
                 ).fetchall()
                 
                 for book in books:
-                    file_path = os.path.join(UPLOADS_DIR, book["file_path"])
-                    if os.path.exists(file_path):
-                        os.remove(file_path)
+                    delete_book_files_from_storage(book["id"], book["type"])
                     if book["cover_path"]:
                         cover_filename = os.path.basename(book["cover_path"])
                         cover_path = os.path.join(COVERS_DIR, cover_filename)
@@ -375,14 +408,12 @@ async def upload_book(
     user_id: str = Depends(get_current_user_id)
 ):
     """
-    Uploads a new book/manga. Files are stored in native raw format on disk.
+    Uploads a new book/manga. Files are stored in NFS library storage.
     Covers are saved in covers/ directory.
     """
     book_id = str(uuid.uuid4())
     
-    # 1. Read file bytes
     file_bytes = await file.read()
-    
     final_type = type
     final_file_bytes = file_bytes
     final_total_pages = total_pages
@@ -395,61 +426,166 @@ async def upload_book(
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"PDF to EPUB conversion failed: {str(e)}")
 
-    # Get extension from filename
-    ext = os.path.splitext(file.filename)[1].lower() if file.filename else ""
-    if not ext:
-        if final_type == "pdf":
-            ext = ".pdf"
-        elif final_type == "epub":
-            ext = ".epub"
-        else:
-            ext = ".zip"
-            
-    file_name = f"{book_id}{ext}"
-    file_path = os.path.join(UPLOADS_DIR, file_name)
-    
-    # Save raw file bytes
-    with open(file_path, "wb") as f:
-        f.write(final_file_bytes)
-        
-    # Generate page manifest for manga (ZIP/CBZ) files
-    page_manifest_json = None
-    if final_type in ["manga", "cbz", "zip"]:
-        import io
-        pages = get_manga_pages_from_zip(io.BytesIO(final_file_bytes))
-        final_total_pages = len(pages)
-        page_manifest_json = json.dumps(pages)
-    
-    # 2. Save cover image to covers/ if provided, or generate one automatically
     cover_url_path = ""
     cover_name = f"{book_id}.jpg"
     cover_path = os.path.join(COVERS_DIR, cover_name)
+    
+    # Save cover if provided
     if cover:
         cover_bytes = await cover.read()
-        with open(cover_path, "wb") as f:
-            f.write(cover_bytes)
-        cover_url_path = f"/covers/{cover_name}"
-    else:
-        # Bypassed or failed client-side generation: try backend automatic cover extraction
-        if generate_cover_backend(final_file_bytes, final_type, cover_path):
+        try:
+            os.makedirs(os.path.dirname(cover_path), exist_ok=True)
+            with open(cover_path, "wb") as f:
+                f.write(cover_bytes)
             cover_url_path = f"/covers/{cover_name}"
+        except OSError as e:
+            print(f"Error saving uploaded cover: {e}")
+
+    page_manifest_json = None
+    
+    # Process files according to format type
+    if final_type in ["manga", "cbz", "zip"]:
+        # Manga Extraction Task
+        import tempfile
+        import shutil
+        from PIL import Image
         
+        tmp_base = "/tmp"
+        try:
+            os.makedirs(tmp_base, exist_ok=True)
+        except OSError:
+            tmp_base = tempfile.gettempdir()
+            
+        zip_tmp_path = os.path.join(tmp_base, f"{book_id}.zip")
+        extract_dir = os.path.join(tmp_base, f"manga_extract_{book_id}")
+        
+        try:
+            # Write zip to temp file
+            with open(zip_tmp_path, "wb") as f:
+                f.write(final_file_bytes)
+                
+            # Extract zip contents
+            os.makedirs(extract_dir, exist_ok=True)
+            with zipfile.ZipFile(zip_tmp_path, "r") as z:
+                z.extractall(extract_dir)
+                
+            # Recursively find image files
+            image_files = []
+            for root, dirs, files in os.walk(extract_dir):
+                for file_entry in files:
+                    basename = os.path.basename(file_entry)
+                    if basename.startswith('.') or basename.lower() == 'thumbs.db':
+                        continue
+                    ext = os.path.splitext(file_entry)[1].lower()
+                    if ext in ['.png', '.jpg', '.jpeg', '.webp', '.gif']:
+                        full_path = os.path.join(root, file_entry)
+                        rel_path = os.path.relpath(full_path, extract_dir)
+                        image_files.append((rel_path, full_path))
+                        
+            # Sort images naturally
+            image_files.sort(key=lambda x: natural_sort_key(x[0]))
+            
+            pages_list = []
+            for rel_path, full_path in image_files:
+                # Normalize relative path separators
+                rel_path_norm = rel_path.replace(os.sep, '/')
+                parts = rel_path_norm.split('/')
+                
+                # Determine chapter_id
+                if len(parts) > 1:
+                    chapter_id = "_".join(parts[:-1])
+                else:
+                    chapter_id = "1"
+                    
+                # Determine page_number
+                base_name = parts[-1]
+                page_number = os.path.splitext(base_name)[0]
+                
+                # Sanitize path segments
+                chapter_id = sanitize_path_segment(chapter_id)
+                page_number = sanitize_path_segment(page_number)
+                
+                # Write converted WebP output
+                nfs_manga_dir = os.path.join(LIBRARY_STORAGE_DIR, "manga", book_id, chapter_id)
+                os.makedirs(nfs_manga_dir, exist_ok=True)
+                dest_webp_path = os.path.join(nfs_manga_dir, f"{page_number}.webp")
+                
+                try:
+                    with Image.open(full_path) as img:
+                        img.save(dest_webp_path, "WEBP")
+                    pages_list.append(f"{chapter_id}/{page_number}.webp")
+                except Exception as e:
+                    print(f"Failed to convert image {rel_path} to WebP: {e}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Failed to process and convert manga page: {str(e)}"
+                    )
+            
+            final_total_pages = len(pages_list)
+            page_manifest_json = json.dumps(pages_list)
+            db_file_path = f"manga/{book_id}"
+            
+            # Generate cover if not uploaded
+            if not cover and image_files:
+                first_img_path = image_files[0][1]
+                try:
+                    os.makedirs(os.path.dirname(cover_path), exist_ok=True)
+                    with Image.open(first_img_path) as img:
+                        if img.mode != "RGB":
+                            img = img.convert("RGB")
+                        img.save(cover_path, "JPEG")
+                        cover_url_path = f"/covers/{cover_name}"
+                except Exception as e:
+                    print(f"Failed to generate cover for manga: {e}")
+                    
+        finally:
+            # Cleanup temp files
+            try:
+                if os.path.exists(zip_tmp_path):
+                    os.remove(zip_tmp_path)
+                if os.path.exists(extract_dir):
+                    shutil.rmtree(extract_dir)
+            except Exception as e:
+                print(f"Failed to clean up temp files: {e}")
+                
+    else:
+        # PDF or EPUB Binary storage
+        db_file_path = f"binaries/epubs/{book_id}.epub" if final_type == "epub" else f"binaries/pdfs/{book_id}.pdf"
+        dest_path = get_storage_path(book_id, final_type)
+        
+        try:
+            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+            with open(dest_path, "wb") as f:
+                f.write(final_file_bytes)
+        except OSError as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Failed to write binary file to storage: {str(e)}"
+            )
+            
+        # Generate cover if not uploaded
+        if not cover:
+            try:
+                os.makedirs(os.path.dirname(cover_path), exist_ok=True)
+                if generate_cover_backend(final_file_bytes, final_type, cover_path):
+                    cover_url_path = f"/covers/{cover_name}"
+            except Exception as e:
+                print(f"Failed to generate cover for binary: {e}")
+
     # 3. Save to database
     with get_db() as conn:
         conn.execute("""
             INSERT INTO books (id, user_id, title, type, file_path, cover_path, total_pages, page_manifest)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?);
-        """, (book_id, user_id, title, final_type, file_name, cover_url_path, final_total_pages, page_manifest_json))
+        """, (book_id, user_id, title, final_type, db_file_path, cover_url_path, final_total_pages, page_manifest_json))
         
         new_book = conn.execute("SELECT * FROM books WHERE id = ?;", (book_id,)).fetchone()
         
     return new_book
 
-@app.get("/api/books/{book_id}/file")
-async def get_book_file(book_id: str, user_id: str = Depends(get_current_user_id)):
-    """
-    Streams the book file directly to the client.
-    """
+from fastapi import Header
+
+async def handle_binary_stream(book_id: str, user_id: str, range: Optional[str] = None):
     with get_db() as conn:
         book = conn.execute(
             "SELECT * FROM books WHERE id = ? AND user_id = ?;",
@@ -459,32 +595,96 @@ async def get_book_file(book_id: str, user_id: str = Depends(get_current_user_id
     if not book:
         raise HTTPException(status_code=404, detail="Book not found or access denied")
         
-    file_path = os.path.join(UPLOADS_DIR, book["file_path"])
-    
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Book file missing on server")
+    book_type = book.get("type") or book.get("file_type")
+    if not book_type:
+        raise HTTPException(status_code=400, detail="Invalid or missing book type")
         
-    # Set headers based on format type
-    if book["type"] == "pdf":
-        media_type = "application/pdf"
-    elif book["type"] == "epub":
+    if book_type == "epub":
         media_type = "application/epub+zip"
+    elif book_type == "pdf":
+        media_type = "application/pdf"
     else:
         media_type = "application/zip"
+        
+    file_path = get_storage_path(book_id, book_type)
     
-    if is_gzip_file(file_path):
-        return StreamingResponse(
-            decompress_and_stream(file_path),
-            media_type=media_type,
-            headers={"Content-Disposition": f"inline; filename={book['title']}.{book['type']}"}
+    try:
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="Book file missing on server")
+        file_size = os.path.getsize(file_path)
+    except OSError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Storage system is temporarily unavailable: {str(e)}"
         )
-    else:
-        from fastapi.responses import FileResponse
-        return FileResponse(
-            file_path,
-            media_type=media_type,
-            filename=f"{book['title']}.{book['type']}"
-        )
+        
+    start = 0
+    end = file_size - 1
+    status_code = 200
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Content-Disposition": f"inline; filename=\"{book['title']}.{book_type}\""
+    }
+    
+    if range:
+        match = re.match(r"bytes=(\d+)-(\d*)", range)
+        if match:
+            start = int(match.group(1))
+            if match.group(2):
+                end = int(match.group(2))
+                
+            if start >= file_size:
+                return JSONResponse(
+                    status_code=416,
+                    content={"detail": "Requested Range Not Satisfiable"},
+                    headers={"Content-Range": f"bytes */{file_size}"}
+                )
+                
+            end = min(end, file_size - 1)
+            status_code = 206
+            headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+            
+    content_length = end - start + 1
+    headers["Content-Length"] = str(content_length)
+    
+    def file_sender():
+        try:
+            with open(file_path, "rb") as f:
+                f.seek(start)
+                bytes_left = content_length
+                chunk_size = 1024 * 64
+                while bytes_left > 0:
+                    read_size = min(chunk_size, bytes_left)
+                    chunk = f.read(read_size)
+                    if not chunk:
+                        break
+                    bytes_left -= len(chunk)
+                    yield chunk
+        except OSError as e:
+            print(f"NFS Connection error while streaming {file_path}: {e}")
+            return
+            
+    return StreamingResponse(file_sender(), status_code=status_code, media_type=media_type, headers=headers)
+
+@app.get("/api/books/{book_id}/stream")
+@app.get("/books/{book_id}/stream")
+async def stream_book(
+    book_id: str,
+    range: Optional[str] = Header(None),
+    user_id: str = Depends(get_current_user_id)
+):
+    return await handle_binary_stream(book_id, user_id, range)
+
+@app.get("/api/books/{book_id}/file")
+async def get_book_file(
+    book_id: str,
+    range: Optional[str] = Header(None),
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    Streams the book file directly to the client with seeking/range support.
+    """
+    return await handle_binary_stream(book_id, user_id, range)
 
 @app.put("/api/books/{book_id}/progress")
 async def update_progress(
@@ -531,7 +731,7 @@ async def update_progress(
 @app.delete("/api/books/{book_id}")
 async def delete_book(book_id: str, user_id: str = Depends(get_current_user_id)):
     """
-    Deletes a book, removing it from the SQLite database and deleting its files from disk.
+    Deletes a book, removing it from the SQLite database and deleting its files from NFS storage.
     """
     with get_db() as conn:
         book = conn.execute(
@@ -545,10 +745,8 @@ async def delete_book(book_id: str, user_id: str = Depends(get_current_user_id))
         # Delete from DB
         conn.execute("DELETE FROM books WHERE id = ?;", (book_id,))
         
-    # Delete file from disk
-    file_path = os.path.join(UPLOADS_DIR, book["file_path"])
-    if os.path.exists(file_path):
-        os.remove(file_path)
+    # Delete file from storage
+    delete_book_files_from_storage(book_id, book["type"])
         
     # Delete cover from disk
     if book["cover_path"]:
@@ -576,37 +774,40 @@ async def convert_existing_book(book_id: str, user_id: str = Depends(get_current
     if book["type"] != "pdf":
         raise HTTPException(status_code=400, detail="Only PDF books can be converted to EPUB format.")
         
-    file_path = os.path.join(UPLOADS_DIR, book["file_path"])
-    if not os.path.exists(file_path):
+    pdf_path = get_storage_path(book_id, "pdf")
+    if not os.path.exists(pdf_path):
         raise HTTPException(status_code=404, detail="Original PDF file is missing on the server")
         
     try:
-        # Read PDF bytes, decompressing if gzipped
-        if is_gzip_file(file_path):
-            pdf_bytes = b"".join(decompress_and_stream(file_path))
-            # Convert PDF to EPUB
-            from app.epub_converter import convert_pdf_to_epub
-            epub_bytes = convert_pdf_to_epub(pdf_bytes, book["title"])
-            # Overwrite legacy file with compressed EPUB
-            compress_and_save(epub_bytes, file_path)
-        else:
-            with open(file_path, "rb") as f:
-                pdf_bytes = f.read()
-            # Convert PDF to EPUB
-            from app.epub_converter import convert_pdf_to_epub
-            epub_bytes = convert_pdf_to_epub(pdf_bytes, book["title"])
-            # Save raw EPUB
-            with open(file_path, "wb") as f:
-                f.write(epub_bytes)
+        # Read PDF bytes (no longer gzipped on NFS)
+        with open(pdf_path, "rb") as f:
+            pdf_bytes = f.read()
+            
+        # Convert PDF to EPUB
+        from app.epub_converter import convert_pdf_to_epub
+        epub_bytes = convert_pdf_to_epub(pdf_bytes, book["title"])
         
-        # Update type to 'epub' in DB
+        # Save EPUB to correct destination
+        epub_path = get_storage_path(book_id, "epub")
+        os.makedirs(os.path.dirname(epub_path), exist_ok=True)
+        with open(epub_path, "wb") as f:
+            f.write(epub_bytes)
+            
+        # Remove old PDF file
+        try:
+            os.remove(pdf_path)
+        except OSError as e:
+            print(f"Warning: Failed to delete converted PDF: {e}")
+            
+        # Update type and file_path in DB
         with get_db() as conn:
             conn.execute("""
                 UPDATE books
                 SET type = 'epub',
+                    file_path = ?,
                     last_read_at = datetime('now')
                 WHERE id = ? AND user_id = ?;
-            """, (book_id, user_id))
+            """, (f"binaries/epubs/{book_id}.epub", book_id, user_id))
             
             updated_book = conn.execute("SELECT * FROM books WHERE id = ?;", (book_id,)).fetchone()
             
@@ -662,31 +863,77 @@ async def get_manga_pages(book_id: str, user_id: str = Depends(get_current_user_
         except Exception:
             pass
             
-    # Lazy generation
+    # Lazy generation from legacy zip
     file_path = os.path.join(UPLOADS_DIR, book["file_path"])
     if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Book file missing on server")
+        file_path = os.path.join(LIBRARY_STORAGE_DIR, "manga", f"{book_id}.zip")
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="Book file missing on server")
         
     try:
-        ensure_decompressed(file_path)
+        import tempfile
+        import shutil
+        from PIL import Image
+        
+        tmp_base = tempfile.gettempdir()
+        extract_dir = os.path.join(tmp_base, f"manga_extract_lazy_{book_id}")
+        os.makedirs(extract_dir, exist_ok=True)
+        
+        with zipfile.ZipFile(file_path, "r") as z:
+            z.extractall(extract_dir)
+            
+        image_files = []
+        for root, dirs, files in os.walk(extract_dir):
+            for file_entry in files:
+                basename = os.path.basename(file_entry)
+                if basename.startswith('.') or basename.lower() == 'thumbs.db':
+                    continue
+                ext = os.path.splitext(file_entry)[1].lower()
+                if ext in ['.png', '.jpg', '.jpeg', '.webp', '.gif']:
+                    full_path = os.path.join(root, file_entry)
+                    rel_path = os.path.relpath(full_path, extract_dir)
+                    image_files.append((rel_path, full_path))
+                    
+        image_files.sort(key=lambda x: natural_sort_key(x[0]))
+        
+        pages = []
+        for rel_path, full_path in image_files:
+            rel_path_norm = rel_path.replace(os.sep, '/')
+            parts = rel_path_norm.split('/')
+            chapter_id = "_".join(parts[:-1]) if len(parts) > 1 else "1"
+            page_number = os.path.splitext(parts[-1])[0]
+            
+            chapter_id = sanitize_path_segment(chapter_id)
+            page_number = sanitize_path_segment(page_number)
+            
+            nfs_manga_dir = os.path.join(LIBRARY_STORAGE_DIR, "manga", book_id, chapter_id)
+            os.makedirs(nfs_manga_dir, exist_ok=True)
+            dest_webp_path = os.path.join(nfs_manga_dir, f"{page_number}.webp")
+            
+            with Image.open(full_path) as img:
+                img.save(dest_webp_path, "WEBP")
+            pages.append(f"{chapter_id}/{page_number}.webp")
+            
+        # Update DB with manifest
+        page_manifest_json = json.dumps(pages)
+        with get_db() as conn:
+            conn.execute("""
+                UPDATE books
+                SET page_manifest = ?,
+                    total_pages = ?,
+                    file_path = ?
+                WHERE id = ?;
+            """, (page_manifest_json, len(pages), f"manga/{book_id}", book_id))
+            
+        # Cleanup
+        try:
+            shutil.rmtree(extract_dir)
+        except Exception:
+            pass
+            
+        return {"pages": pages}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to decompress archive: {str(e)}")
-        
-    pages = get_manga_pages_from_zip(file_path)
-        
-    # Persist the generated page manifest to DB
-    page_count = len(pages)
-    page_manifest_json = json.dumps(pages)
-    
-    with get_db() as conn:
-        conn.execute("""
-            UPDATE books
-            SET page_manifest = ?,
-                total_pages = ?
-            WHERE id = ?;
-        """, (page_manifest_json, page_count, book_id))
-        
-    return {"pages": pages}
+        raise HTTPException(status_code=500, detail=f"Lazy manga extraction failed: {str(e)}")
 
 @app.get("/api/books/{book_id}/manga/pages/{page_index}/image")
 async def get_manga_page_image(
@@ -695,14 +942,14 @@ async def get_manga_page_image(
     token: str,
 ):
     """
-    Streams a single page image directly from the archive.
+    Streams a single page image directly from NFS manga directory.
     Validates the short-lived media token and book permissions.
     """
     # 1. Validate the short-lived media token
     from app.auth import verify_media_token
     user_id = verify_media_token(token, book_id)
     
-    # 2. Verify book permissions (make sure user owns/has access to the book)
+    # 2. Verify book permissions
     with get_db() as conn:
         book = conn.execute(
             "SELECT * FROM books WHERE id = ? AND user_id = ?;",
@@ -723,61 +970,96 @@ async def get_manga_page_image(
         except Exception:
             pass
             
-    file_path = os.path.join(UPLOADS_DIR, book["file_path"])
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Book file missing")
-
-    try:
-        ensure_decompressed(file_path)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to decompress archive: {str(e)}")
-
     if not pages:
-        pages = get_manga_pages_from_zip(file_path)
+        # Fallback for legacy records that didn't have pages extracted
+        file_path = os.path.join(UPLOADS_DIR, book["file_path"])
+        if not os.path.exists(file_path):
+            file_path = os.path.join(LIBRARY_STORAGE_DIR, "manga", f"{book_id}.zip")
+            if not os.path.exists(file_path):
+                raise HTTPException(status_code=404, detail="Book file missing")
+                
+        # Perform lazy extraction to NFS
+        try:
+            import tempfile
+            import shutil
+            from PIL import Image
             
-        page_manifest_json = json.dumps(pages)
-        with get_db() as conn:
-            conn.execute("""
-                UPDATE books
-                SET page_manifest = ?,
-                    total_pages = ?
-                WHERE id = ?;
-            """, (page_manifest_json, len(pages), book_id))
+            tmp_base = tempfile.gettempdir()
+            extract_dir = os.path.join(tmp_base, f"manga_extract_lazy_{book_id}")
+            os.makedirs(extract_dir, exist_ok=True)
+            
+            with zipfile.ZipFile(file_path, "r") as z:
+                z.extractall(extract_dir)
+                
+            image_files = []
+            for root, dirs, files in os.walk(extract_dir):
+                for file_entry in files:
+                    basename = os.path.basename(file_entry)
+                    if basename.startswith('.') or basename.lower() == 'thumbs.db':
+                        continue
+                    ext = os.path.splitext(file_entry)[1].lower()
+                    if ext in ['.png', '.jpg', '.jpeg', '.webp', '.gif']:
+                        full_path = os.path.join(root, file_entry)
+                        rel_path = os.path.relpath(full_path, extract_dir)
+                        image_files.append((rel_path, full_path))
+                        
+            image_files.sort(key=lambda x: natural_sort_key(x[0]))
+            
+            pages = []
+            for rel_path, full_path in image_files:
+                rel_path_norm = rel_path.replace(os.sep, '/')
+                parts = rel_path_norm.split('/')
+                chapter_id = "_".join(parts[:-1]) if len(parts) > 1 else "1"
+                page_number = os.path.splitext(parts[-1])[0]
+                
+                chapter_id = sanitize_path_segment(chapter_id)
+                page_number = sanitize_path_segment(page_number)
+                
+                nfs_manga_dir = os.path.join(LIBRARY_STORAGE_DIR, "manga", book_id, chapter_id)
+                os.makedirs(nfs_manga_dir, exist_ok=True)
+                dest_webp_path = os.path.join(nfs_manga_dir, f"{page_number}.webp")
+                
+                with Image.open(full_path) as img:
+                    img.save(dest_webp_path, "WEBP")
+                pages.append(f"{chapter_id}/{page_number}.webp")
+                
+            # Update DB with manifest
+            page_manifest_json = json.dumps(pages)
+            with get_db() as conn:
+                conn.execute("""
+                    UPDATE books
+                    SET page_manifest = ?,
+                        total_pages = ?,
+                        file_path = ?
+                    WHERE id = ?;
+                """, (page_manifest_json, len(pages), f"manga/{book_id}", book_id))
+                
+            # Cleanup
+            try:
+                shutil.rmtree(extract_dir)
+            except Exception:
+                pass
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Lazy manga extraction failed: {str(e)}")
             
     if page_index < 0 or page_index >= len(pages):
         raise HTTPException(status_code=404, detail="Page index out of bounds")
         
     target_filename = pages[page_index]
+    webp_path = os.path.join(LIBRARY_STORAGE_DIR, "manga", book_id, target_filename)
     
-    # 4. Stream directly from ZIP archive without extracting to disk
-    # Determine content-type
-    ext = os.path.splitext(target_filename)[1].lower()
-    if ext == ".png":
-        media_type = "image/png"
-    elif ext in [".jpg", ".jpeg"]:
-        media_type = "image/jpeg"
-    elif ext == ".webp":
-        media_type = "image/webp"
-    elif ext == ".gif":
-        media_type = "image/gif"
-    else:
-        media_type = "application/octet-stream"
+    if not os.path.exists(webp_path):
+        raise HTTPException(status_code=404, detail="Manga page image file missing on storage")
         
+    # Stream the file directly from NFS
+    from fastapi.responses import FileResponse
     try:
-        z = zipfile.ZipFile(file_path)
-        def stream_bytes():
-            try:
-                with z.open(target_filename) as img_file:
-                    while True:
-                        chunk = img_file.read(1024 * 64)
-                        if not chunk:
-                            break
-                        yield chunk
-            finally:
-                z.close()
-        return StreamingResponse(stream_bytes(), media_type=media_type)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to read archive: {str(e)}")
+        return FileResponse(webp_path, media_type="image/webp")
+    except OSError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Storage system is temporarily unavailable: {str(e)}"
+        )
 
 # Mount frontend compiled static files (if they exist)
 STATIC_DIR = os.path.join(BASE_DIR, "static")

@@ -27,6 +27,10 @@ def mock_db_and_paths(monkeypatch, tmp_path):
     monkeypatch.setattr(app.main, "UPLOADS_DIR", str(uploads_dir))
     monkeypatch.setattr(app.main, "COVERS_DIR", str(covers_dir))
     
+    library_storage = tmp_path / "library_storage"
+    library_storage.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(app.main, "LIBRARY_STORAGE_DIR", str(library_storage))
+    
     # Force mock environment settings for consistent JWT tests
     monkeypatch.setenv("JWT_SECRET", "test-secret-key-12345")
     monkeypatch.setattr(app.auth, "JWT_SECRET", "test-secret-key-12345")

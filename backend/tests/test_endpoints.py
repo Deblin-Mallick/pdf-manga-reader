@@ -67,11 +67,11 @@ def test_book_crud_lifecycle(client):
     assert book["type"] == "pdf"
     book_id = book["id"]
     
-    # Verify files on disk
+    # Verify files on disk (NFS storage paths)
     import app.main
-    uploads_dir = app.main.UPLOADS_DIR
+    library_storage = app.main.LIBRARY_STORAGE_DIR
     covers_dir = app.main.COVERS_DIR
-    assert os.path.exists(os.path.join(uploads_dir, book["file_path"]))
+    assert os.path.exists(os.path.join(library_storage, "binaries", "pdfs", f"{book_id}.pdf"))
     assert os.path.exists(os.path.join(covers_dir, f"{book_id}.jpg"))
     
     # 2. Get Books
@@ -85,6 +85,11 @@ def test_book_crud_lifecycle(client):
     response = client.get(f"/api/books/{book_id}/file", headers=headers)
     assert response.status_code == 200
     assert response.content == pdf_bytes
+    
+    # 3b. Seek/Range request stream
+    response = client.get(f"/api/books/{book_id}/stream", headers={**headers, "Range": "bytes=0-10"})
+    assert response.status_code == 206
+    assert len(response.content) == 11
     
     # 4. Update Progress
     progress_payload = {
@@ -106,6 +111,10 @@ def test_book_crud_lifecycle(client):
     converted_book = response.json()
     assert converted_book["type"] == "epub"
     
+    # Verify PDF is deleted and EPUB exists
+    assert not os.path.exists(os.path.join(library_storage, "binaries", "pdfs", f"{book_id}.pdf"))
+    assert os.path.exists(os.path.join(library_storage, "binaries", "epubs", f"{book_id}.epub"))
+    
     # Verify stream now returns EPUB type
     response = client.get(f"/api/books/{book_id}/file", headers=headers)
     assert response.status_code == 200
@@ -116,7 +125,7 @@ def test_book_crud_lifecycle(client):
     assert response.status_code == 200
     
     # Verify files deleted from disk
-    assert not os.path.exists(os.path.join(uploads_dir, book["file_path"]))
+    assert not os.path.exists(os.path.join(library_storage, "binaries", "epubs", f"{book_id}.epub"))
     assert not os.path.exists(os.path.join(covers_dir, f"{book_id}.jpg"))
     
     # Verify deleted from DB
@@ -142,14 +151,14 @@ def test_guest_logout_purges_data(client):
     book_id = book["id"]
     
     import app.main
-    assert os.path.exists(os.path.join(app.main.UPLOADS_DIR, book["file_path"]))
+    assert os.path.exists(os.path.join(app.main.LIBRARY_STORAGE_DIR, "binaries", "pdfs", f"{book_id}.pdf"))
     
     # Log out
     response = client.post("/api/auth/logout", headers=headers)
     assert response.status_code == 200
     
     # Verify files and DB entries are purged
-    assert not os.path.exists(os.path.join(app.main.UPLOADS_DIR, book["file_path"]))
+    assert not os.path.exists(os.path.join(app.main.LIBRARY_STORAGE_DIR, "binaries", "pdfs", f"{book_id}.pdf"))
     
     from app.db import get_db
     with get_db() as conn:
@@ -161,15 +170,26 @@ def test_guest_logout_purges_data(client):
 def test_manga_endpoints(client):
     import io
     import zipfile
+    from PIL import Image
+    
+    # Helper to generate valid image bytes
+    def create_dummy_image_bytes(format="PNG"):
+        img = Image.new('RGB', (1, 1), color='red')
+        buf = io.BytesIO()
+        img.save(buf, format=format)
+        return buf.getvalue()
+        
+    png_bytes = create_dummy_image_bytes("PNG")
+    jpg_bytes = create_dummy_image_bytes("JPEG")
     
     # 1. Create a dummy ZIP manga file in-memory
     manga_buf = io.BytesIO()
     with zipfile.ZipFile(manga_buf, "w") as z:
-        z.writestr("page1.png", b"fake-png-1")
-        z.writestr("sub/page3.png", b"fake-png-3")
-        z.writestr("page2.jpg", b"fake-jpg-2")
+        z.writestr("page1.png", png_bytes)
+        z.writestr("sub/page3.png", png_bytes)
+        z.writestr("page2.jpg", jpg_bytes)
         z.writestr("not-an-image.txt", b"some-text")
-        z.writestr(".hidden.png", b"hidden")
+        z.writestr(".hidden.png", png_bytes)
     manga_bytes = manga_buf.getvalue()
     
     token = "guest_manga_user"
@@ -197,14 +217,20 @@ def test_manga_endpoints(client):
     import app.main
     assert os.path.exists(os.path.join(app.main.COVERS_DIR, f"{book_id}.jpg"))
     
+    # Verify NFS directories exist
+    library_storage = app.main.LIBRARY_STORAGE_DIR
+    assert os.path.exists(os.path.join(library_storage, "manga", book_id, "1", "page1.webp"))
+    assert os.path.exists(os.path.join(library_storage, "manga", book_id, "1", "page2.webp"))
+    assert os.path.exists(os.path.join(library_storage, "manga", book_id, "sub", "page3.webp"))
+    
     # 3. Retrieve Page Manifest (cached)
     response = client.get(f"/api/books/{book_id}/manga/pages", headers=headers)
     assert response.status_code == 200
     manifest = response.json()
     assert len(manifest["pages"]) == 3
-    assert manifest["pages"][0] == "page1.png"
-    assert manifest["pages"][1] == "page2.jpg"
-    assert manifest["pages"][2] == "sub/page3.png"
+    assert manifest["pages"][0] == "1/page1.webp"
+    assert manifest["pages"][1] == "1/page2.webp"
+    assert manifest["pages"][2] == "sub/page3.webp"
     
     # 4. Get Media Token
     response = client.post(f"/api/books/{book_id}/media-token", headers=headers)
@@ -215,14 +241,12 @@ def test_manga_endpoints(client):
     # 5. Stream Page Image
     response = client.get(f"/api/books/{book_id}/manga/pages/0/image?token={media_token}")
     assert response.status_code == 200
-    assert response.content == b"fake-png-1"
-    assert response.headers["content-type"] == "image/png"
+    assert response.headers["content-type"] == "image/webp"
     
     # Stream another page image (sub/page3.png is index 2)
     response = client.get(f"/api/books/{book_id}/manga/pages/2/image?token={media_token}")
     assert response.status_code == 200
-    assert response.content == b"fake-png-3"
-    assert response.headers["content-type"] == "image/png"
+    assert response.headers["content-type"] == "image/webp"
     
     # Try invalid page index
     response = client.get(f"/api/books/{book_id}/manga/pages/5/image?token={media_token}")
@@ -234,4 +258,7 @@ def test_manga_endpoints(client):
     
     # Clean up
     client.delete(f"/api/books/{book_id}", headers=headers)
+    
+    # Verify manga files deleted from NFS
+    assert not os.path.exists(os.path.join(library_storage, "manga", book_id))
 

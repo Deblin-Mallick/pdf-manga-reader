@@ -43,10 +43,11 @@ A premium, high-performance, and fully containerized web application designed fo
 | **PDF Rendering**| `pdfjs-dist` (v4) | Mozilla's standard PDF parser & renderer |
 | **ZIP Extraction**| `jszip` | In-browser unpacking of `.cbz` / `.zip` archives |
 | **Icons** | `lucide-react` | Clean SVG visual cues and styling icons |
-| **Backend** | FastAPI (Python 3.11) | High-performance asynchronous API framework |
-| **Database** | SQLite | Lightweight relational storage for metadata and progress |
+| **Backend** | FastAPI (Python 3.10+) | High-performance asynchronous API framework |
+| **Database** | SQLite / PostgreSQL | Relational storage for metadata and progress |
 | **Security** | PyJWT, python-multipart | OAuth validation and secure session creation |
-| **Compression** | `gzip` | Server-side file compression (`.gz`) for storage efficiency |
+| **Image Processing**| `Pillow` | WebP conversion and cover generation |
+| **Storage** | NFS Mount (`/mnt/library_storage`) | Server-mapped storage for library files |
 | **Containerization**| Docker, Docker Compose | Single command multi-stage deployment build |
 
 ---
@@ -57,19 +58,18 @@ A premium, high-performance, and fully containerized web application designed fo
 ├── backend/
 │   ├── app/
 │   │   ├── auth.py         # Google OAuth & local JWT authentication
-│   │   ├── compression.py  # Server-side gzip helpers for uploaded files
-│   │   ├── db.py           # SQLite schema and session lifecycle manager
-│   │   └── main.py         # FastAPI endpoints and static file mounts
+│   │   ├── compression.py  # Gzip compression utilities (legacy)
+│   │   ├── db.py           # SQLite / Postgres schema and session manager
+│   │   └── main.py         # FastAPI routes, NFS storage paths, and range streaming
 │   ├── covers/             # Cover thumbnails directory (ignored in git)
-│   ├── uploads/            # Gzipped books and manga files (ignored in git)
 │   ├── Dockerfile          # Multi-stage production build (builds UI -> runs Python)
 │   └── requirements.txt    # Python dependencies
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── Dashboard.tsx    # Library search, upload, and authentication
-│   │   │   ├── MangaReader.tsx  # ZIP viewer, layout options, and image tuning
-│   │   │   └── PDFReader.tsx    # PDF Canvas loader, zoom, and invert filters
+│   │   │   ├── MangaReader.tsx  # Layout options, rendering, and image tuning
+│   │   │   └── PDFReader.tsx    # PDF Canvas loader, zoom, and night-mode filters
 │   │   ├── App.tsx         # Main entry, state routing, and sync loop
 │   │   ├── index.css       # Core styling & custom glassmorphism styles
 │   │   └── main.tsx        # React DOM initiator
@@ -79,6 +79,31 @@ A premium, high-performance, and fully containerized web application designed fo
 ├── package.json            # Root configuration (concurrent local runs)
 └── .env.example            # Template for credential keys
 ```
+
+---
+
+## 💾 Storage Architecture (NFS)
+
+Rather than storing binary files inside local uploads folders, the media library's backend storage pipeline is refactored to interface with a mounted NFS (Network File System) at `/mnt/library_storage/`.
+
+### Directory Configuration Schema
+- **ePub binaries**: `/mnt/library_storage/binaries/epubs/{book_id}.epub`
+- **PDF binaries**:  `/mnt/library_storage/binaries/pdfs/{book_id}.pdf`
+- **Manga pages**:  `/mnt/library_storage/manga/{book_id}/{chapter_id}/{page_number}.webp`
+
+### Manga Extraction & WebP Optimization
+When an administrator uploads a `.cbz` or `.zip` file:
+1. The zip archive is unpacked to a temporary directory under `/tmp`.
+2. All images are processed and converted to `.webp` using Pillow for size optimization.
+3. The directory matrix is created and populated on the NFS (`/mnt/library_storage/manga/{book_id}/{chapter_id}/{page_number}.webp`).
+4. A relative path page manifest is stored in the database, enabling page image streaming.
+5. The cover is automatically generated from the first page in the manifest.
+6. Temporary files inside `/tmp` are cleaned up immediately.
+
+### Seek & Range Request Support
+- Encompasses optimized streaming at `GET /books/:id/stream` and `GET /api/books/:id/file`.
+- Supports chunk-seeking through HTTP `Range` headers, returning partial `206` responses with appropriate `Accept-Ranges`, `Content-Length`, and `Content-Range` headers.
+- Handles NFS latency and network disconnections gracefully using safety-checked I/O operations (yielding `503 Service Unavailable` on filesystem failure instead of crashing).
 
 ---
 
@@ -154,7 +179,7 @@ The project includes a multi-stage `Dockerfile` and a `docker-compose.yml` confi
     docker-compose up --build
     ```
 3.  The web application will be running at **`http://localhost:8000`**.
-4.  All uploaded books, cover images, and the PostgreSQL database are safely persisted inside Docker-managed named volumes (`uploads`, `covers`, and `pgdata`). This ensures that your files and databases are completely safe from deletion when updating stack builds or pulling new repository commits in Portainer.
+4.  All cover images and the PostgreSQL database are persisted inside Docker-managed volumes (`covers` and `pgdata`). For the library storage, ensure that the host's NFS mount point `/mnt/library_storage` is passed/mounted into the backend container at `/mnt/library_storage` (e.g. via volume binding `/mnt/library_storage:/mnt/library_storage` in `docker-compose.yml`). This ensures that your files and databases are completely safe from deletion when updating stack builds or pulling new repository commits in Portainer.
 
 ---
 

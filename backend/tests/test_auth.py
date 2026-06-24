@@ -40,5 +40,7 @@ def test_get_current_user_id_valid_jwt():
     assert ret_val == user_id
 
 def test_get_current_user_id_expired_or_invalid_jwt():
-    ret_val = get_current_user_id("Bearer invalid.jwt.token")
-    assert ret_val == "guest"
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as exc_info:
+        get_current_user_id("Bearer invalid.jwt.token")
+    assert exc_info.value.status_code == 401

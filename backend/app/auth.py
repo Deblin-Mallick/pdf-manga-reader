@@ -133,9 +133,16 @@ def get_current_user_id(authorization: Optional[str] = Header(None)) -> str:
             
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         return payload["sub"]
-    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
-        # We don't crash, we fall back to guest or raise an error depending on strictness.
-        return "guest"
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired"
+        )
+    except jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token"
+        )
 
 MEDIA_TOKEN_EXPIRY_SECONDS = 300  # 5 minutes
 

@@ -42,27 +42,27 @@ volumes:
   pgdata:
     driver: local
     driver_opts:
-      type: none
-      o: bind
-      device: /mnt/database_server/postgresql/data
+      type: nfs
+      o: "addr=${NAS_IP:-192.168.2.119},rw,nolock,hard,nfsvers=4"
+      device: ":${NAS_PATH:-/Volume1/Database_server}/postgresql/data"
 
   uploads_data:
     driver: local
     driver_opts:
-      type: none
-      o: bind
-      device: /mnt/database_server/uploads
+      type: nfs
+      o: "addr=${NAS_IP:-192.168.2.119},rw,nolock,hard,nfsvers=4"
+      device: ":${NAS_PATH:-/Volume1/Database_server}/uploads"
 
   covers_data:
     driver: local
     driver_opts:
-      type: none
-      o: bind
-      device: /mnt/database_server/covers
+      type: nfs
+      o: "addr=${NAS_IP:-192.168.2.119},rw,nolock,hard,nfsvers=4"
+      device: ":${NAS_PATH:-/Volume1/Database_server}/covers"
 
   sqlite_data:
     driver: local
     driver_opts:
-      type: none
-      o: bind
-      device: /mnt/database_server/data
+      type: nfs
+      o: "addr=${NAS_IP:-192.168.2.119},rw,nolock,hard,nfsvers=4"
+      device: ":${NAS_PATH:-/Volume1/Database_server}/data"

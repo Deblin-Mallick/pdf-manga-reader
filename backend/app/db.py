@@ -89,7 +89,9 @@ def get_db():
         wrapped_conn = PgConnection(conn)
         try:
             yield wrapped_conn
-            wrapped_conn.commit()
+            # Only commit if there is an active transaction
+            if conn.get_transaction_status() != 0:
+                wrapped_conn.commit()
         except Exception as e:
             wrapped_conn.rollback()
             raise e
@@ -110,7 +112,8 @@ def get_db():
         conn.execute("PRAGMA temp_store = MEMORY;")
         try:
             yield conn
-            conn.commit()
+            if conn.in_transaction:
+                conn.commit()
         except Exception as e:
             conn.rollback()
             raise e
@@ -161,6 +164,11 @@ def init_db():
                     INSERT INTO users (id, email, name, picture)
                     VALUES ('guest', 'guest@local.dev', 'Guest Reader', '')
                     ON CONFLICT(id) DO NOTHING;
+                """)
+
+                # Create index for books user_id and last_read_at
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_books_user_last_read ON books (user_id, last_read_at DESC);
                 """)
 
                 # Run migration to add page_manifest column to books table

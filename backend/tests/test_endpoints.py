@@ -193,6 +193,9 @@ def test_manga_endpoints(client):
     assert book["type"] == "manga"
     assert book["total_pages"] == 3
     book_id = book["id"]
+    assert book["cover_path"] == f"/covers/{book_id}.jpg"
+    import app.main
+    assert os.path.exists(os.path.join(app.main.COVERS_DIR, f"{book_id}.jpg"))
     
     # 3. Retrieve Page Manifest (cached)
     response = client.get(f"/api/books/{book_id}/manga/pages", headers=headers)

@@ -15,6 +15,20 @@ import re
 import json
 import zipfile
 import gzip
+from threading import Lock
+
+try:
+    import pymupdf as fitz  # type: ignore
+    HAS_FITZ = True
+except ImportError:
+    try:
+        import fitz  # type: ignore
+        HAS_FITZ = True
+    except ImportError:
+        HAS_FITZ = False
+        fitz = None  # type: ignore
+
+_decompress_lock = Lock()
 
 
 
@@ -47,6 +61,68 @@ def get_manga_pages_from_zip(file_path_or_bytes) -> list:
     except Exception as e:
         print(f"Error reading zip: {e}")
     return pages
+
+def ensure_decompressed(file_path: str):
+    """
+    If a file is gzip compressed, permanently decompresses it on disk to avoid
+    the high CPU/memory overhead of decompressing it on every page request.
+    """
+    if is_gzip_file(file_path):
+        with _decompress_lock:
+            if is_gzip_file(file_path):
+                temp_path = file_path + ".tmp"
+                try:
+                    with gzip.open(file_path, "rb") as gf:
+                        with open(temp_path, "wb") as df:
+                            while True:
+                                chunk = gf.read(1024 * 1024)
+                                if not chunk:
+                                    break
+                                df.write(chunk)
+                    os.replace(temp_path, file_path)
+                except Exception as e:
+                    if os.path.exists(temp_path):
+                        try:
+                            os.remove(temp_path)
+                        except Exception:
+                            pass
+                    raise e
+
+def generate_cover_backend(file_bytes: bytes, book_type: str, cover_path: str) -> bool:
+    """
+    Renders/extracts the cover image (page 1) of a PDF or ZIP book.
+    """
+    try:
+        import io
+        if book_type == "pdf" and HAS_FITZ and fitz is not None:
+            doc = fitz.open(stream=io.BytesIO(file_bytes), filetype="pdf")
+            if len(doc) > 0:
+                page = doc[0]
+                pix = page.get_pixmap(matrix=fitz.Matrix(0.6, 0.6))
+                os.makedirs(os.path.dirname(cover_path), exist_ok=True)
+                pix.save(cover_path)
+                doc.close()
+                return True
+        elif book_type in ["manga", "cbz", "zip"]:
+            with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
+                images = [
+                    info.filename for info in z.infolist()
+                    if not info.is_dir() and 
+                    os.path.basename(info.filename).lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif')) and
+                    not os.path.basename(info.filename).startswith('.') and
+                    not info.filename.startswith('__MACOSX')
+                ]
+                if images:
+                    images.sort(key=natural_sort_key)
+                    first_img_name = images[0]
+                    img_data = z.read(first_img_name)
+                    os.makedirs(os.path.dirname(cover_path), exist_ok=True)
+                    with open(cover_path, "wb") as f:
+                        f.write(img_data)
+                    return True
+    except Exception as e:
+        print(f"Backend cover generation failed: {e}")
+    return False
 
 import datetime
 
@@ -344,15 +420,19 @@ async def upload_book(
         final_total_pages = len(pages)
         page_manifest_json = json.dumps(pages)
     
-    # 2. Save cover image to covers/ if provided
+    # 2. Save cover image to covers/ if provided, or generate one automatically
     cover_url_path = ""
+    cover_name = f"{book_id}.jpg"
+    cover_path = os.path.join(COVERS_DIR, cover_name)
     if cover:
         cover_bytes = await cover.read()
-        cover_name = f"{book_id}.jpg"
-        cover_path = os.path.join(COVERS_DIR, cover_name)
         with open(cover_path, "wb") as f:
             f.write(cover_bytes)
         cover_url_path = f"/covers/{cover_name}"
+    else:
+        # Bypassed or failed client-side generation: try backend automatic cover extraction
+        if generate_cover_backend(final_file_bytes, final_type, cover_path):
+            cover_url_path = f"/covers/{cover_name}"
         
     # 3. Save to database
     with get_db() as conn:
@@ -587,17 +667,12 @@ async def get_manga_pages(book_id: str, user_id: str = Depends(get_current_user_
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Book file missing on server")
         
-    pages = []
-    if is_gzip_file(file_path):
-        try:
-            with gzip.open(file_path, "rb") as gf:
-                zip_data = gf.read()
-            import io
-            pages = get_manga_pages_from_zip(io.BytesIO(zip_data))
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to read legacy archive: {str(e)}")
-    else:
-        pages = get_manga_pages_from_zip(file_path)
+    try:
+        ensure_decompressed(file_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to decompress archive: {str(e)}")
+        
+    pages = get_manga_pages_from_zip(file_path)
         
     # Persist the generated page manifest to DB
     page_count = len(pages)
@@ -648,21 +723,17 @@ async def get_manga_page_image(
         except Exception:
             pass
             
+    file_path = os.path.join(UPLOADS_DIR, book["file_path"])
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Book file missing")
+
+    try:
+        ensure_decompressed(file_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to decompress archive: {str(e)}")
+
     if not pages:
-        file_path = os.path.join(UPLOADS_DIR, book["file_path"])
-        if not os.path.exists(file_path):
-            raise HTTPException(status_code=404, detail="Book file missing")
-            
-        if is_gzip_file(file_path):
-            try:
-                with gzip.open(file_path, "rb") as gf:
-                    zip_data = gf.read()
-                import io
-                pages = get_manga_pages_from_zip(io.BytesIO(zip_data))
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Failed to read legacy archive: {str(e)}")
-        else:
-            pages = get_manga_pages_from_zip(file_path)
+        pages = get_manga_pages_from_zip(file_path)
             
         page_manifest_json = json.dumps(pages)
         with get_db() as conn:
@@ -679,8 +750,6 @@ async def get_manga_page_image(
     target_filename = pages[page_index]
     
     # 4. Stream directly from ZIP archive without extracting to disk
-    file_path = os.path.join(UPLOADS_DIR, book["file_path"])
-    
     # Determine content-type
     ext = os.path.splitext(target_filename)[1].lower()
     if ext == ".png":
@@ -694,41 +763,21 @@ async def get_manga_page_image(
     else:
         media_type = "application/octet-stream"
         
-    if is_gzip_file(file_path):
-        try:
-            with gzip.open(file_path, "rb") as gf:
-                zip_data = gf.read()
-            import io
-            z = zipfile.ZipFile(io.BytesIO(zip_data))
-            def stream_bytes():
-                try:
-                    with z.open(target_filename) as img_file:
-                        while True:
-                            chunk = img_file.read(1024 * 64)
-                            if not chunk:
-                                break
-                            yield chunk
-                finally:
-                    z.close()
-            return StreamingResponse(stream_bytes(), media_type=media_type)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to read legacy archive: {str(e)}")
-    else:
-        try:
-            z = zipfile.ZipFile(file_path)
-            def stream_bytes():
-                try:
-                    with z.open(target_filename) as img_file:
-                        while True:
-                            chunk = img_file.read(1024 * 64)
-                            if not chunk:
-                                break
-                            yield chunk
-                finally:
-                    z.close()
-            return StreamingResponse(stream_bytes(), media_type=media_type)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to read archive: {str(e)}")
+    try:
+        z = zipfile.ZipFile(file_path)
+        def stream_bytes():
+            try:
+                with z.open(target_filename) as img_file:
+                    while True:
+                        chunk = img_file.read(1024 * 64)
+                        if not chunk:
+                            break
+                        yield chunk
+            finally:
+                z.close()
+        return StreamingResponse(stream_bytes(), media_type=media_type)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read archive: {str(e)}")
 
 # Mount frontend compiled static files (if they exist)
 STATIC_DIR = os.path.join(BASE_DIR, "static")

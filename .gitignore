@@ -40,3 +40,18 @@ backend/covers/
 backend/data/
 *.db
 node_modules
+
+# Graphify knowledge graph
+graphify-out/
+
+# Testing and Coverage
+.pytest_cache/
+*/.pytest_cache/
+.coverage
+htmlcov/
+
+# Local environment variables
+.env.local
+.env.*.local
+
+.agents/

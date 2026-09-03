@@ -349,7 +349,7 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(4, 70, 168, 0.541);
     border-radius: 99px;
     border: 2px solid var(--bg-base);
   }
@@ -376,5 +376,14 @@
     font-family: inherit;
     color: inherit;
     transition: var(--transition-smooth);
+  }
+
+  /* Custom PDF.js Text Layer Selection Color */
+  .textLayer ::selection {
+    background: rgba(139, 92, 246, 0.4) !important;
+  }
+
+  .textLayer ::-moz-selection {
+    background: rgba(139, 92, 246, 0.4) !important;
   }
 }

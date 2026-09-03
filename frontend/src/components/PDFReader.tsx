@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
+import 'pdfjs-dist/web/pdf_viewer.css';
 import { Book, User } from '../App';
 import { Avatar, Badge, Button, IconButton, Tabs, ToggleGroup } from '../ui';
 import * as SubframeCore from '@subframe/core';
@@ -110,6 +111,7 @@ function PDFPageCanvas({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const textLayerRef = useRef<HTMLDivElement>(null);
   const renderTaskRef = useRef<any>(null);
 
   // IntersectionObserver — report page visibility to parent
@@ -156,6 +158,20 @@ function PDFPageCanvas({
         renderTaskRef.current = task;
         await task.promise;
         renderTaskRef.current = null;
+
+        if (cancelled) return;
+        const textContent = await page.getTextContent();
+        if (cancelled || !textLayerRef.current) return;
+
+        textLayerRef.current.innerHTML = '';
+        textLayerRef.current.style.setProperty('--scale-factor', viewport.scale.toString());
+        pdfjsLib.renderTextLayer({
+          textContentSource: textContent,
+          container: textLayerRef.current,
+          viewport: viewport,
+          textDivs: []
+        });
+
       } catch (err: any) {
         if (err?.name === 'RenderingCancelledException') return;
         console.error(`Page ${pageNumber} render error:`, err);
@@ -171,16 +187,23 @@ function PDFPageCanvas({
       id={`pdf-page-${pageNumber}`}
       style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px' }}
     >
-      <canvas
-        ref={canvasRef}
-        style={{
-          boxShadow: '0 8px 32px rgba(0,0,0,0.55)',
-          borderRadius: '4px',
-          transition: 'filter 0.3s ease',
-          filter: isInverted ? 'invert(0.9) hue-rotate(180deg)' : 'none',
-          maxWidth: '100%',
-        }}
-      />
+      <div style={{ position: 'relative' }}>
+        <canvas
+          ref={canvasRef}
+          style={{
+            boxShadow: '0 8px 32px rgba(0,0,0,0.55)',
+            borderRadius: '4px',
+            transition: 'filter 0.3s ease',
+            filter: isInverted ? 'invert(0.9) hue-rotate(180deg)' : 'none',
+            maxWidth: '100%',
+          }}
+        />
+        <div
+          ref={textLayerRef}
+          className="textLayer"
+          style={{ opacity: 1, zIndex: 10, mixBlendMode: isInverted ? 'difference' : 'normal' }}
+        />
+      </div>
     </div>
   );
 }
@@ -380,8 +403,9 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
     localStorage.setItem(localKey, JSON.stringify(prefs));
   }, [isInverted, scrollMode, localKey]);
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const textLayerRef = useRef<HTMLDivElement>(null);
   const activeRenderTaskRef = useRef<any>(null);
   // True while a programmatic scroll is in flight — suppresses IntersectionObserver feedback
   const isProgrammaticScrollRef = useRef(false);
@@ -513,6 +537,18 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
       activeRenderTaskRef.current = task;
       await task.promise;
       activeRenderTaskRef.current = null;
+
+      const textContent = await page.getTextContent();
+      if (textLayerRef.current) {
+        textLayerRef.current.innerHTML = '';
+        textLayerRef.current.style.setProperty('--scale-factor', viewport.scale.toString());
+        pdfjsLib.renderTextLayer({
+          textContentSource: textContent,
+          container: textLayerRef.current,
+          viewport: viewport,
+          textDivs: []
+        });
+      }
     } catch (err: any) {
       if (err?.name === 'RenderingCancelledException') return;
       console.error(err);
@@ -916,7 +952,7 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
                 variant="neutral-tertiary"
                 size="small"
                 icon={<FeatherMinus />}
-                onClick={() => setZoom((z) => Math.max(0.5, z - 0.15))}
+                onClick={() => setZoom((z) => Math.max(0.5, z - 0.05))}
               />
               <span className="w-10 flex-none text-caption-bold font-caption-bold text-default-font text-center" style={{ color: '#f8fafc' }}>
                 {Math.round(zoom * 100)}%
@@ -925,7 +961,7 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
                 variant="neutral-tertiary"
                 size="small"
                 icon={<FeatherPlus />}
-                onClick={() => setZoom((z) => Math.min(2.0, z + 0.15))}
+                onClick={() => setZoom((z) => Math.min(2.0, z + 0.05))}
               />
             </div>
 
@@ -989,7 +1025,7 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
                             variant="neutral-tertiary"
                             size="small"
                             icon={<FeatherMinus />}
-                            onClick={() => setZoom((z) => Math.max(0.5, z - 0.15))}
+                            onClick={() => setZoom((z) => Math.max(0.5, z - 0.05))}
                           />
                           <span className="w-10 flex-none text-caption-bold font-caption-bold text-default-font text-center text-white">
                             {Math.round(zoom * 100)}%
@@ -998,7 +1034,7 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
                             variant="neutral-tertiary"
                             size="small"
                             icon={<FeatherPlus />}
-                            onClick={() => setZoom((z) => Math.min(2.0, z + 0.15))}
+                            onClick={() => setZoom((z) => Math.min(2.0, z + 0.05))}
                           />
                         </div>
                       </div>
@@ -1070,16 +1106,23 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
                 ))}
               </>
             ) : (
-              <canvas
-                ref={canvasRef}
-                style={{
-                  boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
-                  borderRadius: '4px',
-                  transition: 'filter 0.3s ease',
-                  filter: isInverted ? 'invert(0.9) hue-rotate(180deg)' : 'none',
-                  maxWidth: '100%',
-                }}
-              />
+              <div style={{ position: 'relative', display: 'inline-block' }}>
+                <canvas
+                  ref={canvasRef}
+                  style={{
+                    boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                    borderRadius: '4px',
+                    transition: 'filter 0.3s ease',
+                    filter: isInverted ? 'invert(0.9) hue-rotate(180deg)' : 'none',
+                    maxWidth: '100%',
+                  }}
+                />
+                <div
+                  ref={textLayerRef}
+                  className="textLayer"
+                  style={{ opacity: 1, zIndex: 10, mixBlendMode: isInverted ? 'difference' : 'normal' }}
+                />
+              </div>
             )}
           </div>
         </div>

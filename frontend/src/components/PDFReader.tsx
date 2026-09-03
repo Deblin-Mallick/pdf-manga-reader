@@ -961,7 +961,7 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
                 variant="neutral-tertiary"
                 size="small"
                 icon={<FeatherPlus />}
-                onClick={() => setZoom((z) => Math.min(2.0, z + 0.05))}
+                onClick={() => setZoom((z) => Math.min(3.0, z + 0.05))}
               />
             </div>
 
@@ -1034,7 +1034,7 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
                             variant="neutral-tertiary"
                             size="small"
                             icon={<FeatherPlus />}
-                            onClick={() => setZoom((z) => Math.min(2.0, z + 0.05))}
+                            onClick={() => setZoom((z) => Math.min(3.0, z + 0.05))}
                           />
                         </div>
                       </div>

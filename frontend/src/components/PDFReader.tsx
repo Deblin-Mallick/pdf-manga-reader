@@ -650,11 +650,10 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
                     className="flex flex-col items-center gap-1 self-stretch cursor-pointer group/thumb"
                   >
                     <div
-                      className={`flex h-28 w-full flex-none items-center justify-center rounded-md border border-solid transition-all bg-[#050508] relative overflow-hidden ${
-                        isActive
-                          ? 'border-2 border-purple-500 shadow-md'
-                          : 'border-white/10 hover:border-white/30'
-                      }`}
+                      className={`flex h-28 w-full flex-none items-center justify-center rounded-md border border-solid transition-all bg-[#050508] relative overflow-hidden ${isActive
+                        ? 'border-2 border-purple-500 shadow-md'
+                        : 'border-white/10 hover:border-white/30'
+                        }`}
                     >
                       {pdf ? (
                         <PDFThumbnailCanvas
@@ -776,11 +775,6 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
             backgroundColor: activeTheme.cardBg,
           }}
         >
-          <IconButton
-            variant="neutral-tertiary"
-            icon={<FeatherArrowLeft />}
-            onClick={onBack}
-          />
           {!isSidebarOpen && (
             <IconButton
               variant="neutral-tertiary"
@@ -788,6 +782,12 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
               onClick={() => setIsSidebarOpen(true)}
             />
           )}
+          <IconButton
+            variant="neutral-tertiary"
+            icon={<FeatherArrowLeft />}
+            onClick={onBack}
+          />
+
           <div className="flex h-6 w-px flex-none flex-col items-start bg-neutral-border mobile:hidden" style={{ backgroundColor: activeTheme.border }} />
           <div className="flex min-w-[0px] grow shrink-0 basis-0 flex-col items-start">
             <span className="line-clamp-1 w-full text-body-bold font-body-bold text-default-font" style={{ color: activeTheme.heading }}>
@@ -872,7 +872,7 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
               style={bookmarks.includes(currentPage) ? { color: '#a78bfa' } : undefined}
               onClick={toggleBookmark}
             />
-            
+
             <IconButton
               variant="neutral-tertiary"
               icon={<FeatherSun className={isInverted ? 'text-purple-400' : 'text-neutral-400'} />}
@@ -916,7 +916,7 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
                 variant="neutral-tertiary"
                 size="small"
                 icon={<FeatherMinus />}
-                onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}
+                onClick={() => setZoom((z) => Math.max(0.5, z - 0.15))}
               />
               <span className="w-10 flex-none text-caption-bold font-caption-bold text-default-font text-center" style={{ color: '#f8fafc' }}>
                 {Math.round(zoom * 100)}%
@@ -925,7 +925,7 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
                 variant="neutral-tertiary"
                 size="small"
                 icon={<FeatherPlus />}
-                onClick={() => setZoom((z) => Math.min(3.0, z + 0.25))}
+                onClick={() => setZoom((z) => Math.min(2.0, z + 0.15))}
               />
             </div>
 
@@ -952,7 +952,7 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
                       <span className="text-caption-bold font-caption-bold text-neutral-400">
                         DISPLAY OPTIONS
                       </span>
-                      
+
                       {/* Scroll Mode */}
                       <div className="flex w-full items-center justify-between gap-2">
                         <span className="text-body text-neutral-300">Scroll Mode</span>
@@ -989,7 +989,7 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
                             variant="neutral-tertiary"
                             size="small"
                             icon={<FeatherMinus />}
-                            onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}
+                            onClick={() => setZoom((z) => Math.max(0.5, z - 0.15))}
                           />
                           <span className="w-10 flex-none text-caption-bold font-caption-bold text-default-font text-center text-white">
                             {Math.round(zoom * 100)}%
@@ -998,7 +998,7 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
                             variant="neutral-tertiary"
                             size="small"
                             icon={<FeatherPlus />}
-                            onClick={() => setZoom((z) => Math.min(3.0, z + 0.25))}
+                            onClick={() => setZoom((z) => Math.min(2.0, z + 0.15))}
                           />
                         </div>
                       </div>
@@ -1023,15 +1023,15 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
         </div>
 
         {/* READING SURFACE AREA */}
-        <div className="flex w-full grow shrink-0 basis-0 flex-col items-center px-6 py-4 overflow-hidden mobile:px-4">
+        <div className="flex w-full grow shrink-0 basis-0 flex-col items-center px-0.5 py-0.5 overflow-hidden mobile:px-1">
           <div
             ref={containerRef}
-            className="flex w-full grow flex-col items-center justify-center rounded-xl border border-solid shadow-md"
+            className="flex w-full grow flex-col items-center justify-center border border-solid shadow-md"
             style={{
               borderColor: activeTheme.border,
-              backgroundColor: '#050508',
+              backgroundColor: '#08080aff',
               width: '100%',
-              maxWidth: '96%',
+              //maxWidth: '96%',
               height: '100%',
               overflow: scrollMode ? 'auto' : 'hidden',
               display: 'flex',
@@ -1087,10 +1087,10 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
         {/* BOTTOM NAVIGATION FLOATING BAR */}
         {!loading && (
           <div className="flex items-center gap-2 rounded-full border border-solid bg-[#12121a]/90 backdrop-blur-md px-3 py-2 shadow-lg absolute bottom-6 left-1/2 -translate-x-1/2 z-10"
-               style={{
-                 borderColor: activeTheme.border,
-                 color: activeTheme.text,
-               }}
+            style={{
+              borderColor: activeTheme.border,
+              color: activeTheme.text,
+            }}
           >
             <IconButton
               variant="neutral-tertiary"

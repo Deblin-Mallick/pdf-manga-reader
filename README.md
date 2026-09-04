@@ -176,3 +176,9 @@ To enable authentication:
 3.  Configure your OAuth consent screen and create an **OAuth client ID** for Web Applications.
 4.  Add `http://localhost:5173` (development) and `http://localhost:8000` (production) to your **Authorized JavaScript origins**.
 5.  Copy the client ID and paste it as `GOOGLE_CLIENT_ID` in your `.env` file.
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

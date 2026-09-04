@@ -20,8 +20,8 @@
     "url": "git+https://github.com/Deblin-Mallick/pdf-manga-reader.git"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Deblin Mallick",
+  "license": "MIT",
   "type": "commonjs",
   "bugs": {
     "url": "https://github.com/Deblin-Mallick/pdf-manga-reader/issues"

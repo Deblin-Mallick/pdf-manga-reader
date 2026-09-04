@@ -84,7 +84,7 @@ function Cover({ book, className }: { book: BookType; className: string }) {
   if (book.cover_path) {
     return (
       <img
-        className={`${className} border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.4)] transition-all duration-300 group-hover:scale-[1.03] group-hover:shadow-[0_12px_40px_0_rgba(139,92,246,0.2)] group-hover:border-purple-500/40`}
+        className={`${className} border border-white/10 shadow-md transition-all duration-300 group-hover:scale-[1.03] group-hover:border-purple-500/40`}
         src={book.cover_path}
         alt={`${book.title} cover`}
       />
@@ -92,24 +92,24 @@ function Cover({ book, className }: { book: BookType; className: string }) {
   }
 
   const colors: Record<string, string> = {
-    pdf: 'from-blue-950/60 via-neutral-950 to-blue-900/20',
-    epub: 'from-emerald-950/60 via-neutral-950 to-emerald-900/20',
-    cbz: 'from-orange-950/60 via-neutral-950 to-orange-900/20',
-    zip: 'from-orange-950/60 via-neutral-950 to-orange-900/20',
+    pdf: 'bg-[#1a2333]',
+    epub: 'bg-[#152e22]',
+    cbz: 'bg-[#2e1d15]',
+    zip: 'bg-[#2e1d15]',
   };
   const iconColors: Record<string, string> = {
-    pdf: 'text-blue-400/70',
-    epub: 'text-emerald-400/70',
-    cbz: 'text-orange-400/70',
-    zip: 'text-orange-400/70',
+    pdf: 'text-blue-400',
+    epub: 'text-emerald-400',
+    cbz: 'text-orange-400',
+    zip: 'text-orange-400',
   };
 
   return (
     <div
-      className={`${className} flex flex-col items-center justify-center gap-2 bg-gradient-to-br ${colors[book.type] || colors.pdf} border border-white/8 shadow-[0_8px_32px_0_rgba(0,0,0,0.4)] transition-all duration-300 group-hover:scale-[1.03] group-hover:shadow-[0_12px_40px_0_rgba(139,92,246,0.2)] group-hover:border-purple-500/30`}
+      className={`${className} flex flex-col items-center justify-center gap-2 ${colors[book.type] || colors.pdf} border border-white/10 shadow-md transition-all duration-300 group-hover:scale-[1.03] group-hover:border-purple-500/30`}
     >
       <FeatherBookOpen className={`text-heading-1 font-heading-1 ${iconColors[book.type] || iconColors.pdf}`} />
-      <span className="text-[10px] font-bold uppercase tracking-widest text-white/20 px-2 text-center line-clamp-2">{book.title}</span>
+      <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 px-2 text-center line-clamp-2">{book.title}</span>
     </div>
   );
 }
@@ -129,13 +129,13 @@ function RailItem({ icon, label, active = false, badge, onClick }: {
       onClick={onClick}
       className={`relative flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-200 ${
         active
-          ? 'bg-purple-500/15 text-purple-400 border border-purple-500/25 shadow-[0_0_16px_rgba(139,92,246,0.25)]'
+          ? 'bg-purple-600/20 text-purple-400 border border-purple-500/30'
           : 'text-neutral-500 hover:bg-white/5 hover:text-neutral-200'
       }`}
     >
       {icon}
       {badge ? (
-        <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-purple-500 px-1 text-[9px] font-bold text-white shadow-[0_0_8px_rgba(139,92,246,0.6)]">
+        <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-purple-600 px-1 text-[9px] font-bold text-white">
           {badge}
         </span>
       ) : null}
@@ -380,25 +380,25 @@ export default function Dashboard({
   };
 
   return (
-    <div className="flex min-h-screen w-full items-start bg-transparent text-default-font">
+    <div className="flex min-h-screen w-full items-start bg-[#09090e] text-default-font">
       {/* Mobile Drawer Backdrop */}
       {isMobileMenuOpen && (
         <div
-          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm hidden mobile:block"
+          className="fixed inset-0 z-30 bg-black/70 hidden mobile:block"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
 
       {/* Left Rail Navigation */}
       <aside
-        className={`sticky top-0 flex h-screen w-16 flex-none flex-col items-center gap-2 border-r border-white/[0.04] bg-[#09090e]/50 backdrop-blur-xl py-4 transition-all duration-300 z-40 ${
+        className={`sticky top-0 flex h-screen w-16 flex-none flex-col items-center gap-2 border-r border-white/[0.06] bg-[#09090e] py-4 transition-all duration-300 z-40 ${
           isMobileMenuOpen
-            ? 'mobile:flex mobile:fixed mobile:left-0 mobile:top-0 mobile:w-20 mobile:bg-[#09090e] mobile:shadow-[0_0_40px_rgba(0,0,0,0.8)]'
+            ? 'mobile:flex mobile:fixed mobile:left-0 mobile:top-0 mobile:w-20 mobile:bg-[#09090e] mobile:shadow-2xl'
             : 'mobile:hidden'
         }`}
       >
-        <div className="mb-3 flex w-full justify-center border-b border-white/[0.04] pb-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-purple-600/20 to-indigo-600/20 border border-purple-500/20 shadow-[0_0_12px_rgba(139,92,246,0.15)]">
+        <div className="mb-3 flex w-full justify-center border-b border-white/[0.06] pb-4">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-950/60 border border-purple-500/30">
             <FeatherBookOpen className="text-lg text-purple-400" />
           </div>
         </div>
@@ -406,7 +406,7 @@ export default function Dashboard({
         <RailItem active={activeTab === 'library'} icon={<FeatherBook />} label="Library" onClick={() => { setActiveTab('library'); setIsMobileMenuOpen(false); }} />
         <RailItem active={activeTab === 'in-progress'} icon={<FeatherBookOpen />} label="Continue Reading" badge={inProgress.length} onClick={() => { setActiveTab('in-progress'); setIsMobileMenuOpen(false); }} />
         <RailItem active={activeTab === 'uploads'} icon={<FeatherUploadCloud />} label="Uploads" onClick={() => { setActiveTab('uploads'); setIsMobileMenuOpen(false); }} />
-        <div className="mt-auto flex w-full flex-col items-center gap-2 border-t border-white/[0.04] pt-3">
+        <div className="mt-auto flex w-full flex-col items-center gap-2 border-t border-white/[0.06] pt-3">
           <RailItem active={activeTab === 'completed'} icon={<FeatherBookOpenCheck />} label="Completed" onClick={() => { setActiveTab('completed'); setIsMobileMenuOpen(false); }} />
           <RailItem active={activeTab === 'favorites'} icon={<FeatherHeart />} label="Favorites" onClick={() => { setActiveTab('favorites'); setIsMobileMenuOpen(false); }} />
           <RailItem active={activeTab === 'library'} icon={<FeatherFiles />} label="All Files" onClick={() => { setActiveTab('library'); setIsMobileMenuOpen(false); }} />
@@ -415,7 +415,7 @@ export default function Dashboard({
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Topbar */}
-        <header className="sticky top-0 z-20 flex w-full items-center gap-4 border-b border-white/[0.04] bg-[#09090e]/70 px-6 py-3 backdrop-blur-xl mobile:px-4">
+        <header className="sticky top-0 z-20 flex w-full items-center gap-4 border-b border-white/[0.06] bg-[#09090e] px-6 py-3 mobile:px-4">
           <IconButton
             className="hidden mobile:flex"
             icon={<FeatherMenu />}
@@ -480,7 +480,7 @@ export default function Dashboard({
                         <span className="text-xs font-bold text-purple-400">Welcome to SleekReader!</span>
                         <span className="text-[11px] text-neutral-300">Start uploading your PDFs, EPUBs, or ZIP manga files to curate your personalized library.</span>
                       </div>
-                      <div className="flex flex-col gap-1 rounded-md bg-[#0f172a]/50 p-2.5">
+                      <div className="flex flex-col gap-1 rounded-md bg-[#0f172a] p-2.5">
                         <span className="text-xs font-bold text-cyan-400">Tips & Shortcuts</span>
                         <span className="text-[11px] text-neutral-300">Use arrow keys (←/→) to flip pages inside the reader, and customize font sizes using the settings panel.</span>
                       </div>
@@ -500,7 +500,7 @@ export default function Dashboard({
                 {activeTab === 'dashboard' ? (
                   <>
                     {getGreeting()},{' '}
-                    <span className="bg-gradient-to-r from-purple-400 to-indigo-400 bg-clip-text text-transparent">{displayName}</span>
+                    <span className="text-purple-400 font-semibold">{displayName}</span>
                   </>
                 ) : (
                   greetingDetails.title
@@ -535,20 +535,16 @@ export default function Dashboard({
                 <Button variant="neutral-tertiary" size="small" iconRight={<FeatherArrowRight />} onClick={() => setActiveTab('in-progress')}>All In Progress</Button>
               </div>
               <div
-                className="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-gradient-to-br from-[#13131e] to-[#0d0d16] shadow-[0_8px_40px_rgba(0,0,0,0.5)] hover:border-purple-500/20 transition-all duration-500 group"
+                className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-[#12121a] shadow-lg hover:border-purple-500/30 transition-all duration-300 group"
               >
-                {/* Background accent glow */}
-                <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-purple-600/10 blur-3xl" />
-                <div className="pointer-events-none absolute -bottom-8 -left-8 h-36 w-36 rounded-full bg-indigo-600/10 blur-2xl" />
-
                 <div className="relative flex w-full items-start gap-6 p-6 mobile:flex-col mobile:p-4">
                   <div className="relative flex-none">
                     <Cover
                       book={resumeBook}
-                      className="h-52 w-36 rounded-xl object-cover shadow-[0_8px_24px_rgba(0,0,0,0.5)] mobile:h-44 mobile:w-32"
+                      className="h-52 w-36 rounded-xl object-cover shadow-md mobile:h-44 mobile:w-32"
                     />
                     {/* Progress ring on cover corner */}
-                    <div className="absolute -bottom-2 -right-2 flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#09090e] bg-gradient-to-br from-purple-600 to-indigo-600 text-xs font-bold text-white shadow-[0_0_12px_rgba(139,92,246,0.5)]">
+                    <div className="absolute -bottom-2 -right-2 flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#09090e] bg-purple-600 text-xs font-bold text-white shadow-md">
                       {progressFor(resumeBook)}%
                     </div>
                   </div>
@@ -587,7 +583,7 @@ export default function Dashboard({
                     </div>
 
                     <Button
-                      className="self-start bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold border-0 shadow-[0_0_20px_rgba(139,92,246,0.35)] hover:shadow-[0_0_28px_rgba(139,92,246,0.5)] transition-all duration-300"
+                      className="self-start bg-purple-600 hover:bg-purple-500 text-white font-semibold border-0 shadow-md transition-all duration-200"
                       icon={<FeatherPlay />}
                       onClick={() => onSelectBook(resumeBook)}
                     >
@@ -606,21 +602,18 @@ export default function Dashboard({
                 label="In Progress"
                 value={inProgress.length}
                 detail={`of ${books.length} total`}
-                accentColor="from-purple-500/10 to-indigo-500/5"
                 dotColor="bg-purple-400"
               />
               <Metric
                 label="Pages Read"
                 value={books.reduce((sum, book) => sum + book.current_page, 0)}
                 trend="Current library"
-                accentColor="from-cyan-500/10 to-blue-500/5"
                 dotColor="bg-cyan-400"
               />
               <Metric
                 label="Completed"
                 value={completed.length}
                 detail="books total"
-                accentColor="from-emerald-500/10 to-teal-500/5"
                 dotColor="bg-emerald-400"
               />
             </section>
@@ -681,8 +674,7 @@ export default function Dashboard({
 
           {/* ─── Upload Banner ─── */}
           {(activeTab === 'dashboard' || activeTab === 'uploads') && (
-            <section className="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-gradient-to-r from-purple-950/15 via-[#13131e] to-indigo-950/15 px-6 py-5 mobile:flex-col mobile:items-start hover:border-purple-500/20 transition-all duration-300">
-              <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-indigo-600/8 blur-3xl" />
+            <section className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-[#12121a] px-6 py-5 mobile:flex-col mobile:items-start hover:border-purple-500/30 transition-all duration-300">
               <div className="flex items-center justify-between gap-4 mobile:flex-col mobile:items-start">
                 <div>
                   <h2 className="text-body-bold font-body-bold text-white">Add to Your Library</h2>
@@ -702,7 +694,7 @@ export default function Dashboard({
                     icon={<FeatherUploadCloud />}
                     loading={Boolean(uploadStatus)}
                     onClick={() => fileInputRef.current?.click()}
-                    className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold border-0 shadow-[0_0_16px_rgba(139,92,246,0.25)]"
+                    className="bg-purple-600 hover:bg-purple-500 text-white font-semibold border-0 shadow-md"
                   >
                     {uploadStatus || 'Upload File'}
                   </Button>
@@ -716,7 +708,7 @@ export default function Dashboard({
 
           {/* ─── Google Sign-In Nudge ─── */}
           {activeTab === 'dashboard' && user?.id.startsWith('guest_') && googleClientId ? (
-            <section className="flex items-center justify-between gap-4 rounded-2xl border border-purple-500/25 bg-gradient-to-r from-purple-600/8 to-indigo-600/8 px-6 py-5 mobile:flex-col mobile:items-start shadow-[0_0_24px_rgba(139,92,246,0.08)]">
+            <section className="flex items-center justify-between gap-4 rounded-2xl border border-purple-500/30 bg-[#12121a] px-6 py-5 mobile:flex-col mobile:items-start shadow-md">
               <div>
                 <h2 className="text-body-bold font-body-bold text-white flex items-center gap-2">
                   <span className="flex h-2 w-2 rounded-full bg-purple-400 animate-pulse" />
@@ -785,9 +777,9 @@ function GridBookCard({
         </div>
         {/* Slim progress bar */}
         {pct > 0 && pct < 100 && (
-          <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-white/5">
+          <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-white/10">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-700"
+              className="h-full rounded-full bg-purple-500 transition-all duration-700"
               style={{ width: `${pct}%` }}
             />
           </div>
@@ -843,7 +835,7 @@ function ListBookCard({
 }) {
   const pct = progressFor(book);
   return (
-    <article className="group flex items-center gap-4 rounded-xl border border-white/[0.05] bg-[#12121a]/60 hover:bg-[#12121a]/90 hover:border-white/10 p-4 transition-all duration-300">
+    <article className="group flex items-center gap-4 rounded-xl border border-white/[0.08] bg-[#12121a] hover:bg-[#181824] hover:border-white/15 p-4 transition-all duration-200">
       <button type="button" className="flex-none text-left" onClick={onSelect}>
         <Cover book={book} className="h-20 w-14 rounded-lg object-cover shadow-sm" />
       </button>
@@ -866,9 +858,9 @@ function ListBookCard({
         </div>
         {pct > 0 && (
           <div className="mt-2.5 flex items-center gap-2">
-            <div className="flex-1 h-1 overflow-hidden rounded-full bg-white/5">
+            <div className="flex-1 h-1 overflow-hidden rounded-full bg-white/10">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-700"
+                className="h-full rounded-full bg-purple-500 transition-all duration-700"
                 style={{ width: `${pct}%` }}
               />
             </div>
@@ -911,9 +903,9 @@ function ListBookCard({
 
 function EmptyState({ hasBooks, onUpload }: { hasBooks: boolean; onUpload: () => void }) {
   return (
-    <div className="flex min-h-52 flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-white/8 bg-[#12121a]/20 p-10 text-center">
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-500/10 border border-purple-500/15">
-        <FeatherBookOpen className="text-2xl text-purple-400/80" />
+    <div className="flex min-h-52 flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-white/10 bg-[#12121a] p-10 text-center">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-950/60 border border-purple-500/30">
+        <FeatherBookOpen className="text-2xl text-purple-400" />
       </div>
       <div>
         <h3 className="text-body-bold font-body-bold text-white">{hasBooks ? 'No matching books' : 'Your library is empty'}</h3>
@@ -925,7 +917,7 @@ function EmptyState({ hasBooks, onUpload }: { hasBooks: boolean; onUpload: () =>
         <Button
           icon={<FeatherUploadCloud />}
           onClick={onUpload}
-          className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 border-none text-white shadow-[0_0_16px_rgba(139,92,246,0.3)]"
+          className="bg-purple-600 hover:bg-purple-500 border-none text-white shadow-md"
         >
           Upload your first book
         </Button>
@@ -939,24 +931,22 @@ function Metric({
   value,
   detail,
   trend,
-  accentColor,
   dotColor,
 }: {
   label: string;
   value: number;
   detail?: string;
   trend?: string;
-  accentColor: string;
   dotColor: string;
 }) {
   return (
-    <div className={`relative overflow-hidden rounded-2xl border border-white/[0.06] bg-gradient-to-br ${accentColor} from-[#12121a]/80 p-5 shadow-[0_4px_24px_rgba(0,0,0,0.3)] hover:border-white/10 transition-all duration-300`}>
+    <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-[#12121a] p-5 shadow-sm hover:border-white/15 transition-all duration-200">
       <div className="flex items-start justify-between">
-        <span className="text-caption font-caption text-neutral-500 uppercase tracking-wider">{label}</span>
-        <span className={`mt-1 h-2 w-2 rounded-full ${dotColor} opacity-80`} />
+        <span className="text-caption font-caption text-neutral-400 uppercase tracking-wider">{label}</span>
+        <span className={`mt-1 h-2 w-2 rounded-full ${dotColor}`} />
       </div>
       <div className="mt-3 flex items-end gap-2">
-        <span className="text-3xl font-bold bg-gradient-to-b from-white to-neutral-300 bg-clip-text text-transparent leading-none">
+        <span className="text-3xl font-bold text-white leading-none">
           {value}
         </span>
         {trend ? (

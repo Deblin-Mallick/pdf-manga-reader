@@ -498,6 +498,11 @@ function ReaderWrapper({ books, user, token, updateProgressMutation }: ReaderWra
     navigate('/');
   }, [navigate]);
 
+  const mutateRef = useRef(updateProgressMutation.mutate);
+  useEffect(() => {
+    mutateRef.current = updateProgressMutation.mutate;
+  }, [updateProgressMutation.mutate]);
+
   const handleUpdateProgress = useCallback(async (
     bookId: string,
     progress: {
@@ -508,8 +513,8 @@ function ReaderWrapper({ books, user, token, updateProgressMutation }: ReaderWra
       reading_direction: 'ltr' | 'rtl';
     }
   ) => {
-    updateProgressMutation.mutate({ bookId, progress });
-  }, [updateProgressMutation]);
+    mutateRef.current({ bookId, progress });
+  }, []);
 
   if (book.type === 'pdf') {
     return (

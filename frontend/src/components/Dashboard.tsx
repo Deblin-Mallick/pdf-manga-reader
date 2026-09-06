@@ -287,18 +287,31 @@ export default function Dashboard({
   const createThumbnailBlob = (imageBlob: Blob): Promise<Blob> =>
     new Promise((resolve) => {
       const img = new Image();
-      img.src = URL.createObjectURL(imageBlob);
+      const objUrl = URL.createObjectURL(imageBlob);
+      img.src = objUrl;
       img.onload = () => {
+        URL.revokeObjectURL(objUrl);
         const canvas = document.createElement('canvas');
         const scale = Math.min(1, 320 / Math.max(img.width, img.height));
         canvas.width = Math.round(img.width * scale);
         canvas.height = Math.round(img.height * scale);
         const context = canvas.getContext('2d');
-        if (!context) return resolve(imageBlob);
+        if (!context) {
+          canvas.width = 0;
+          canvas.height = 0;
+          return resolve(imageBlob);
+        }
         context.drawImage(img, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob((blob) => resolve(blob ?? imageBlob), 'image/jpeg', 0.85);
+        canvas.toBlob((blob) => {
+          canvas.width = 0;
+          canvas.height = 0;
+          resolve(blob ?? imageBlob);
+        }, 'image/jpeg', 0.85);
       };
-      img.onerror = () => resolve(imageBlob);
+      img.onerror = () => {
+        URL.revokeObjectURL(objUrl);
+        resolve(imageBlob);
+      };
     });
 
   const processFile = async (file: File) => {
@@ -316,26 +329,47 @@ export default function Dashboard({
       let totalPages = 1;
       let coverBlob: Blob | null = null;
       if (isPdf) {
-        const pdf = await pdfjsLib.getDocument({ data: fileBuffer }).promise;
-        totalPages = pdf.numPages;
-        const page = await pdf.getPage(1);
-        const viewport = page.getViewport({ scale: 0.6 });
-        const canvas = document.createElement('canvas');
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        const context = canvas.getContext('2d');
-        if (context) {
-          await page.render({ canvasContext: context, viewport }).promise;
-          coverBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+        try {
+          const loadingTask = pdfjsLib.getDocument({ data: fileBuffer });
+          const pdf = await loadingTask.promise;
+          try {
+            totalPages = pdf.numPages;
+            const page = await pdf.getPage(1);
+            try {
+              const viewport = page.getViewport({ scale: 0.6 });
+              const canvas = document.createElement('canvas');
+              canvas.width = viewport.width;
+              canvas.height = viewport.height;
+              const context = canvas.getContext('2d');
+              if (context) {
+                await page.render({ canvasContext: context, viewport }).promise;
+                coverBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+              }
+              canvas.width = 0;
+              canvas.height = 0;
+            } finally {
+              page.cleanup();
+            }
+          } finally {
+            pdf.cleanup();
+            await pdf.destroy();
+          }
+        } catch (pdfErr) {
+          console.warn('Client-side PDF cover extraction failed, falling back to backend:', pdfErr);
         }
       } else {
-        const zip = await JSZip.loadAsync(fileBuffer);
-        const images = Object.keys(zip.files)
-          .filter((name) => /\.(jpe?g|png|webp|gif|bmp)$/i.test(name) && !zip.files[name].dir)
-          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-        if (!images.length) throw new Error('No images found in the archive.');
-        totalPages = images.length;
-        coverBlob = await createThumbnailBlob(await zip.files[images[0]].async('blob'));
+        try {
+          const zip = await JSZip.loadAsync(fileBuffer);
+          const images = Object.keys(zip.files)
+            .filter((name) => /\.(jpe?g|png|webp|gif|bmp)$/i.test(name) && !zip.files[name].dir)
+            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+          if (images.length) {
+            totalPages = images.length;
+            coverBlob = await createThumbnailBlob(await zip.files[images[0]].async('blob'));
+          }
+        } catch (zipErr) {
+          console.warn('Client-side manga cover extraction failed, falling back to backend:', zipErr);
+        }
       }
 
       setUploadStatus('Uploading and compressing file...');

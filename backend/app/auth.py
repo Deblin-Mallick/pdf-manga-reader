@@ -2,7 +2,7 @@ import os
 import time
 import requests
 import jwt
-from fastapi import Header, HTTPException, status, Depends
+from fastapi import Header, Query, HTTPException, status, Depends
 from typing import Optional
 
 def load_env_file():
@@ -103,21 +103,28 @@ def create_session_token(user_id: str) -> str:
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
-def get_current_user_id(authorization: Optional[str] = Header(None)) -> str:
+def get_current_user_id(
+    authorization: Optional[str] = Header(None),
+    token: Optional[str] = Query(None)
+) -> str:
     """
-    FastAPI dependency to extract and authenticate the current user from the Authorization header.
+    FastAPI dependency to extract and authenticate the current user from the Authorization header
+    or a token query parameter (used by navigator.sendBeacon).
     Falls back to 'guest' if token is absent or invalid.
     """
-    if not authorization:
+    raw_token = None
+    if authorization:
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            raw_token = parts[1]
+    if not raw_token and token:
+        raw_token = token
+        
+    if not raw_token:
         return "guest"
         
     try:
-        parts = authorization.split()
-        if len(parts) != 2 or parts[0].lower() != "bearer":
-            return "guest"
-            
-        token = parts[1]
-        if token.startswith("guest_"):
+        if raw_token.startswith("guest_"):
             # Ensure guest user exists in DB to prevent foreign key violations on books table
             from app.db import get_db
             try:
@@ -126,12 +133,12 @@ def get_current_user_id(authorization: Optional[str] = Header(None)) -> str:
                         INSERT INTO users (id, email, name, picture)
                         VALUES (?, ?, ?, ?)
                         ON CONFLICT(id) DO NOTHING;
-                    """, (token, "guest@local.dev", "Guest Reader", ""))
+                    """, (raw_token, "guest@local.dev", "Guest Reader", ""))
             except Exception as db_err:
                 print(f"Error ensuring guest user exists in database: {db_err}")
-            return token
+            return raw_token
             
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(raw_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         return payload["sub"]
     except jwt.ExpiredSignatureError:
         raise HTTPException(

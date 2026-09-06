@@ -1,7 +1,7 @@
 import os
 import uuid
 from typing import Optional
-from fastapi import FastAPI, Depends, Form, File, UploadFile, HTTPException, status
+from fastapi import FastAPI, Depends, Form, File, UploadFile, HTTPException, status, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse, JSONResponse
@@ -445,10 +445,62 @@ async def upload_book(
         
     return new_book
 
-@app.get("/api/books/{book_id}/file")
-async def get_book_file(book_id: str, user_id: str = Depends(get_current_user_id)):
+def parse_byte_range(range_header: str, file_size: int):
     """
-    Streams the book file directly to the client.
+    Parses an RFC 7233 Range header (e.g. 'bytes=0-1023' or 'bytes=1000-').
+    Returns (start, end) tuple or None if invalid.
+    """
+    if not range_header or not range_header.startswith("bytes="):
+        return None
+    try:
+        range_spec = range_header[6:].strip()
+        parts = range_spec.split("-", 1)
+        if len(parts) != 2:
+            return None
+        start_str, end_str = parts[0].strip(), parts[1].strip()
+        if start_str and end_str:
+            start = int(start_str)
+            end = int(end_str)
+        elif start_str:
+            start = int(start_str)
+            end = file_size - 1
+        elif end_str:
+            suffix = int(end_str)
+            start = max(0, file_size - suffix)
+            end = file_size - 1
+        else:
+            return None
+
+        if start < 0 or start >= file_size or end < start:
+            return None
+        if end >= file_size:
+            end = file_size - 1
+        return start, end
+    except (ValueError, TypeError):
+        return None
+
+def stream_file_range(file_path: str, start: int, end: int, chunk_size: int = 64 * 1024):
+    with open(file_path, "rb") as f:
+        f.seek(start)
+        remaining = end - start + 1
+        while remaining > 0:
+            bytes_to_read = min(chunk_size, remaining)
+            chunk = f.read(bytes_to_read)
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            yield chunk
+
+@app.api_route("/api/books/{book_id}/file", methods=["GET", "HEAD"])
+async def get_book_file(
+    book_id: str,
+    request: Request,
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    Streams the book file directly to the client with full HTTP 206 Range request support.
+    Enables true byte-range streaming for PDF and archive files, preventing the entire
+    binary from being buffered in browser memory on initial load and page refreshes.
     """
     with get_db() as conn:
         book = conn.execute(
@@ -464,6 +516,11 @@ async def get_book_file(book_id: str, user_id: str = Depends(get_current_user_id
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Book file missing on server")
         
+    # If file was previously gzip-compressed, ensure permanently decompressed for accurate byte seeking
+    ensure_decompressed(file_path)
+
+    file_size = os.path.getsize(file_path)
+
     # Set headers based on format type
     if book["type"] == "pdf":
         media_type = "application/pdf"
@@ -472,21 +529,58 @@ async def get_book_file(book_id: str, user_id: str = Depends(get_current_user_id
     else:
         media_type = "application/zip"
     
-    if is_gzip_file(file_path):
-        return StreamingResponse(
-            decompress_and_stream(file_path),
-            media_type=media_type,
-            headers={"Content-Disposition": f"inline; filename={book['title']}.{book['type']}"}
-        )
-    else:
-        from fastapi.responses import FileResponse
-        return FileResponse(
-            file_path,
-            media_type=media_type,
-            filename=f"{book['title']}.{book['type']}"
-        )
+    safe_title = book["title"].replace('"', '\\"')
+    common_headers = {
+        "Accept-Ranges": "bytes",
+        "Content-Disposition": f'inline; filename="{safe_title}.{book["type"]}"',
+    }
 
-@app.put("/api/books/{book_id}/progress")
+    # Handle HEAD request (often sent by PDF.js / browsers to verify range capability)
+    if request.method == "HEAD":
+        headers = {
+            **common_headers,
+            "Content-Length": str(file_size),
+            "Content-Type": media_type,
+        }
+        return Response(status_code=200, headers=headers, media_type=media_type)
+
+    range_header = request.headers.get("range")
+    if range_header:
+        parsed = parse_byte_range(range_header, file_size)
+        if parsed is not None:
+            start, end = parsed
+            content_length = end - start + 1
+            headers = {
+                **common_headers,
+                "Content-Range": f"bytes {start}-{end}/{file_size}",
+                "Content-Length": str(content_length),
+            }
+            return StreamingResponse(
+                stream_file_range(file_path, start, end),
+                status_code=206,
+                headers=headers,
+                media_type=media_type,
+            )
+        else:
+            headers = {
+                "Content-Range": f"bytes */{file_size}",
+                "Accept-Ranges": "bytes",
+            }
+            return Response(status_code=416, headers=headers)
+
+    # Standard full GET request (with Accept-Ranges advertised)
+    headers = {
+        **common_headers,
+        "Content-Length": str(file_size),
+    }
+    return StreamingResponse(
+        stream_file_range(file_path, 0, file_size - 1),
+        status_code=200,
+        headers=headers,
+        media_type=media_type,
+    )
+
+@app.api_route("/api/books/{book_id}/progress", methods=["PUT", "POST"])
 async def update_progress(
     book_id: str,
     update: ProgressUpdateRequest,

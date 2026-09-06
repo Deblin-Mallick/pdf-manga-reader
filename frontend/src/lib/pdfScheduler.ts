@@ -74,12 +74,16 @@ class PDFRenderScheduler {
       const task = this.queue.pop();
       if (task) {
         task.aborted = true;
-        task.cancel();
+        try { task.cancel(); } catch {}
+        task.execute = null as any;
+        task.cancel = () => {};
       }
     }
     for (const task of this.activeTasks.values()) {
       task.aborted = true;
-      task.cancel();
+      try { task.cancel(); } catch {}
+      task.execute = null as any;
+      task.cancel = () => {};
     }
     this.activeTasks.clear();
     this.activeHighPriority = 0;
@@ -95,7 +99,9 @@ class PDFRenderScheduler {
     if (qIdx !== -1) {
       const [task] = this.queue.splice(qIdx, 1);
       task.aborted = true;
-      task.cancel();
+      try { task.cancel(); } catch {}
+      task.execute = null as any;
+      task.cancel = () => {};
       return;
     }
 
@@ -103,7 +109,9 @@ class PDFRenderScheduler {
     const active = this.activeTasks.get(id);
     if (active) {
       active.aborted = true;
-      active.cancel();
+      try { active.cancel(); } catch {}
+      active.execute = null as any;
+      active.cancel = () => {};
     }
   }
 
@@ -135,6 +143,8 @@ class PDFRenderScheduler {
 
     const [task] = this.queue.splice(nextIdx, 1);
     if (task.aborted) {
+      task.execute = null as any;
+      task.cancel = () => {};
       this.scheduleProcessQueue();
       return;
     }
@@ -160,6 +170,8 @@ class PDFRenderScheduler {
           this.activeLowPriority--;
         }
         this.activeTasks.delete(task.id);
+        task.execute = null as any;
+        task.cancel = () => {};
         // Process next queued items
         this.scheduleProcessQueue();
       });

@@ -882,8 +882,9 @@ export default function EPUBReader({
           current_page: p.page, zoom: p.zoom, view_mode: p.mode,
           scroll_position: 0, reading_direction: 'ltr',
         });
+        const url = `/api/books/${book.id}/progress${token ? `?token=${encodeURIComponent(token)}` : ''}`;
         navigator.sendBeacon(
-          `/api/books/${book.id}/progress`,
+          url,
           new Blob([payload], { type: 'application/json' })
         );
       }
@@ -893,7 +894,7 @@ export default function EPUBReader({
       window.removeEventListener('beforeunload', handleUnload);
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     };
-  }, [book.id]);
+  }, [book.id, token]);
 
   // Sync progress to backend (Debounced)
   useEffect(() => {

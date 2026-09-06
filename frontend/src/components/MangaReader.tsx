@@ -247,8 +247,9 @@ export default function MangaReader({
           current_page: p.page, zoom: 1.0, view_mode: viewMode,
           scroll_position: p.scroll, reading_direction: readingDirection,
         });
+        const url = `/api/books/${book.id}/progress${token ? `?token=${encodeURIComponent(token)}` : ''}`;
         navigator.sendBeacon(
-          `/api/books/${book.id}/progress`,
+          url,
           new Blob([payload], { type: 'application/json' })
         );
       }
@@ -258,7 +259,7 @@ export default function MangaReader({
       window.removeEventListener('beforeunload', handleUnload);
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     };
-  }, [book.id, viewMode, readingDirection]);
+  }, [book.id, viewMode, readingDirection, token]);
 
   // Webtoon Scroll handler: calculates active page based on viewport offset
   useEffect(() => {

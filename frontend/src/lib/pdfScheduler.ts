@@ -165,9 +165,9 @@ class PDFRenderScheduler {
       })
       .finally(() => {
         if (task.priority === 1) {
-          this.activeHighPriority--;
+          this.activeHighPriority = Math.max(0, this.activeHighPriority - 1);
         } else {
-          this.activeLowPriority--;
+          this.activeLowPriority = Math.max(0, this.activeLowPriority - 1);
         }
         this.activeTasks.delete(task.id);
         task.execute = null as any;

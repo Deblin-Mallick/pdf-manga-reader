@@ -351,7 +351,6 @@ export default function Dashboard({
               page.cleanup();
             }
           } finally {
-            pdf.cleanup();
             await pdf.destroy();
           }
         } catch (pdfErr) {

@@ -29,6 +29,9 @@ import {
 const MAX_CANVAS_DIMENSION = 4096;
 const PAGE_SPACING = 12;
 const VIRTUAL_BUFFER = 3; // Number of pages above/below viewport to keep rendered in memory
+const THUMB_ROW_HEIGHT = 144;
+const THUMB_ITEM_HEIGHT = 132;
+const THUMB_BUFFER_ROWS = 2;
 
 interface PageLayout {
   page: number;
@@ -213,9 +216,6 @@ function PDFPageCanvas({
       if (textLayerRef.current) {
         textLayerRef.current.replaceChildren();
       }
-      try {
-        pdf.cleanup();
-      } catch {}
     };
   }, [pdf, pageNumber]);
 
@@ -286,9 +286,6 @@ function PDFPageCanvas({
       if (textLayerRef.current) {
         textLayerRef.current.replaceChildren();
       }
-      try {
-        pdf.cleanup();
-      } catch {}
       return;
     }
 
@@ -582,9 +579,6 @@ function PDFThumbnailCanvas({
         canvasRef.current.width = 0;
         canvasRef.current.height = 0;
       }
-      try {
-        pdf.cleanup();
-      } catch {}
     };
   }, [pdf, pageNumber]);
 
@@ -606,9 +600,6 @@ function PDFThumbnailCanvas({
         canvasRef.current.width = 0;
         canvasRef.current.height = 0;
       }
-      try {
-        pdf.cleanup();
-      } catch {}
       return;
     }
 
@@ -749,11 +740,13 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
   );
 
   // Sidebar Open & Sidebar tabs states
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<'pages' | 'outline'>('pages');
   const sidebarScrollRef = useRef<HTMLDivElement>(null);
   const thumbnailListenersRef = useRef<Map<Element, (inView: boolean) => void>>(new Map());
   const [sharedThumbnailObserver, setSharedThumbnailObserver] = useState<IntersectionObserver | null>(null);
+  const [sidebarScrollTop, setSidebarScrollTop] = useState(0);
+  const [sidebarHeight, setSidebarHeight] = useState(800);
 
   // Outline & Bookmarks states
   const [outline, setOutline] = useState<any[]>([]);
@@ -807,6 +800,16 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
       setSharedThumbnailObserver(null);
     };
   }, [sidebarTab, isSidebarOpen]);
+ 
+  // Measure sidebar container height and sync scroll when opened
+  useEffect(() => {
+    if (!isSidebarOpen || sidebarTab !== 'pages') return;
+    const el = sidebarScrollRef.current;
+    if (el) {
+      setSidebarHeight(el.clientHeight || 800);
+      setSidebarScrollTop(el.scrollTop || 0);
+    }
+  }, [isSidebarOpen, sidebarTab]);
 
   // Clean up all pending tasks in scheduler when unmounting
   useEffect(() => {
@@ -871,11 +874,8 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
         }
         if (results.length >= 25) break;
 
-        // Yield every 5 pages and flush worker cache every 25 pages
-        if (pageNum % 25 === 0) {
-          pdf.cleanup();
-          await new Promise((resolve) => setTimeout(resolve, 0));
-        } else if (pageNum % 5 === 0) {
+        // Yield periodically to prevent UI thread blockage
+        if (pageNum % 5 === 0) {
           await new Promise((resolve) => setTimeout(resolve, 0));
         }
       }
@@ -977,7 +977,6 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
       pageTextCacheRef.current.clear();
       pageDimensionsMapRef.current.clear();
       if (docRef.current) {
-        try { docRef.current.cleanup(); } catch {}
         try { docRef.current.destroy(); } catch {}
         docRef.current = null;
       }
@@ -1003,7 +1002,6 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
       if (signal.cancelled) return;
       const vp1 = p1.getViewport({ scale: 1.0 });
       p1.cleanup();
-      doc.cleanup(); // flush worker font/page cache
 
       const initialMap = new Map<number, { width: number; height: number }>();
       initialMap.set(1, { width: vp1.width, height: vp1.height });
@@ -1050,6 +1048,7 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
           disableAutoFetch: true,
           rangeChunkSize: 65536,
           maxImageSize: 1024 * 1024 * 16,
+          verbosity: pdfjsLib.VerbosityLevel.ERRORS,
         });
         loadingTaskRef.current = loadingTask;
 
@@ -1086,8 +1085,17 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
       pdfScheduler.clear();
       pageTextCacheRef.current.clear();
       pageDimensionsMapRef.current.clear();
+      if (canvasRef.current) {
+        const ctx = canvasRef.current.getContext('2d');
+        if (ctx) ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+        canvasRef.current.width = 0;
+        canvasRef.current.height = 0;
+      }
+      if (textLayerRef.current) {
+        textLayerRef.current.replaceChildren();
+      }
+      setPdf(null);
       if (docRef.current) {
-        docRef.current.cleanup();
         docRef.current.destroy().catch(() => {});
         docRef.current = null;
       }
@@ -1438,7 +1446,6 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
 
       page.cleanup();
       singlePageProxyRef.current = null;
-      pdf.cleanup();
     } catch (err: any) {
       if (err?.name !== 'RenderingCancelledException') {
         console.error(err);
@@ -1543,12 +1550,23 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [totalPages, scrollMode, currentPage, jumpToPage]);
 
+  // Virtualized sidebar thumbnail calculations
+  const totalThumbRows = Math.ceil(totalPages / 2);
+  const visibleThumbRowCount = Math.ceil(sidebarHeight / THUMB_ROW_HEIGHT);
+  const startThumbRow = Math.max(0, Math.floor(sidebarScrollTop / THUMB_ROW_HEIGHT) - THUMB_BUFFER_ROWS);
+  const endThumbRow = Math.min(Math.max(0, totalThumbRows - 1), startThumbRow + visibleThumbRowCount + THUMB_BUFFER_ROWS * 2);
+
   // ── Auto-scroll active thumbnail into view in Pages panel ───────────────────
   useEffect(() => {
     if (sidebarTab !== 'pages' || !isSidebarOpen) return;
-    const thumbEl = document.getElementById(`sidebar-thumb-${currentPage}`);
-    if (thumbEl) {
-      thumbEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    const el = sidebarScrollRef.current;
+    if (!el) return;
+    const targetRow = Math.floor((currentPage - 1) / 2);
+    const rowTop = targetRow * THUMB_ROW_HEIGHT;
+    const currentScrollTop = el.scrollTop;
+    const clientHeight = el.clientHeight || 800;
+    if (rowTop < currentScrollTop || rowTop > currentScrollTop + clientHeight - THUMB_ROW_HEIGHT) {
+      el.scrollTo({ top: Math.max(0, rowTop - 100), behavior: 'smooth' });
     }
   }, [currentPage, sidebarTab, isSidebarOpen]);
 
@@ -1606,52 +1624,78 @@ export default function PDFReader({ book, user, token, onBack, onUpdateProgress 
             </Tabs.Item>
           </Tabs>
 
-          {/* PAGES PANEL — Single Shared IntersectionObserver */}
+          {/* PAGES PANEL — Virtualized Grid with Single Shared IntersectionObserver */}
           {sidebarTab === 'pages' && (
             <div
               ref={sidebarScrollRef}
-              className="w-full grow shrink-0 basis-0 items-start gap-3 px-3 py-3 grid grid-cols-2 content-start overflow-auto"
+              onScroll={(e) => setSidebarScrollTop(e.currentTarget.scrollTop)}
+              className="w-full grow shrink-0 basis-0 px-3 py-3 overflow-y-auto overflow-x-hidden relative"
             >
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {
-                const isActive = pageNum === currentPage;
-                return (
-                  <div
-                    key={pageNum}
-                    id={`sidebar-thumb-${pageNum}`}
-                    onClick={() => jumpToPage(pageNum)}
-                    className="flex flex-col items-center gap-1 self-stretch cursor-pointer group/thumb"
-                  >
+              <div
+                style={{
+                  height: `${totalThumbRows * THUMB_ROW_HEIGHT}px`,
+                  position: 'relative',
+                  width: '100%',
+                }}
+              >
+                {Array.from({ length: Math.max(0, endThumbRow - startThumbRow + 1) }, (_, i) => startThumbRow + i).map((rowIdx) => {
+                  const page1 = rowIdx * 2 + 1;
+                  const page2 = rowIdx * 2 + 2;
+                  const pagesInRow = [page1, ...(page2 <= totalPages ? [page2] : [])];
+
+                  return (
                     <div
-                      className={`flex h-28 w-full flex-none items-center justify-center rounded-md border border-solid transition-all bg-[#050508] relative overflow-hidden ${isActive
-                        ? 'border-2 border-purple-500 shadow-md'
-                        : 'border-white/10 hover:border-white/30'
-                        }`}
+                      key={rowIdx}
+                      className="grid grid-cols-2 gap-3 absolute left-0 right-0"
+                      style={{
+                        top: `${rowIdx * THUMB_ROW_HEIGHT}px`,
+                        height: `${THUMB_ITEM_HEIGHT}px`,
+                      }}
                     >
-                      {pdf ? (
-                        <PDFThumbnailCanvas
-                          pdf={pdf}
-                          pageNumber={pageNum}
-                          isInverted={isInverted}
-                          sharedObserver={sharedThumbnailObserver}
-                          listenersMap={thumbnailListenersRef.current}
-                        />
-                      ) : (
-                        <FeatherFileText className={`text-heading-3 font-heading-3 ${isActive ? 'text-purple-400' : 'text-neutral-600'}`} />
-                      )}
-                      {isActive && (
-                        <div className="flex items-start absolute top-1 right-1 z-10">
-                          <Badge variant="brand" icon={null}>
-                            {pageNum}
-                          </Badge>
-                        </div>
-                      )}
+                      {pagesInRow.map((pageNum) => {
+                        const isActive = pageNum === currentPage;
+                        return (
+                          <div
+                            key={pageNum}
+                            id={`sidebar-thumb-${pageNum}`}
+                            onClick={() => jumpToPage(pageNum)}
+                            className="flex flex-col items-center gap-1 self-stretch cursor-pointer group/thumb"
+                          >
+                            <div
+                              className={`flex h-28 w-full flex-none items-center justify-center rounded-md border border-solid transition-all bg-[#050508] relative overflow-hidden ${isActive
+                                ? 'border-2 border-purple-500 shadow-md'
+                                : 'border-white/10 hover:border-white/30'
+                                }`}
+                            >
+                              {pdf ? (
+                                <PDFThumbnailCanvas
+                                  pdf={pdf}
+                                  pageNumber={pageNum}
+                                  isInverted={isInverted}
+                                  sharedObserver={sharedThumbnailObserver}
+                                  listenersMap={thumbnailListenersRef.current}
+                                />
+                              ) : (
+                                <FeatherFileText className={`text-heading-3 font-heading-3 ${isActive ? 'text-purple-400' : 'text-neutral-600'}`} />
+                              )}
+                              {isActive && (
+                                <div className="flex items-start absolute top-1 right-1 z-10">
+                                  <Badge variant="brand" icon={null}>
+                                    {pageNum}
+                                  </Badge>
+                                </div>
+                              )}
+                            </div>
+                            <span className={`text-caption ${isActive ? 'font-caption-bold text-purple-400' : 'text-subtext-color'}`}>
+                              {pageNum}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <span className={`text-caption ${isActive ? 'font-caption-bold text-purple-400' : 'text-subtext-color'}`}>
-                      {pageNum}
-                    </span>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           )}
 

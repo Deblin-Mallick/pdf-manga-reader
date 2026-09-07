@@ -208,12 +208,12 @@ async def add_security_headers(request, call_next):
     # 1. Content-Security-Policy (CSP)
     csp_directives = [
         "default-src 'self'",
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://apis.google.com https://cdnjs.cloudflare.com",
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://apis.google.com https://cdnjs.cloudflare.com https://static.cloudflareinsights.com",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com",
         "img-src 'self' data: blob: https://lh3.googleusercontent.com https://ssl.gstatic.com",
         "font-src 'self' data: https://fonts.gstatic.com",
         "frame-src 'self' https://accounts.google.com",
-        "connect-src 'self' https://accounts.google.com",
+        "connect-src 'self' https://accounts.google.com https://cloudflareinsights.com",
         "worker-src 'self' blob: https://cdnjs.cloudflare.com"
     ]
     response.headers["Content-Security-Policy"] = "; ".join(csp_directives)
@@ -481,6 +481,13 @@ def parse_byte_range(range_header: str, file_size: int):
 
 def stream_file_range(file_path: str, start: int, end: int, chunk_size: int = 64 * 1024):
     with open(file_path, "rb") as f:
+        # Advise the OS kernel not to retain read chunks in page cache (prevents container RAM bloat over NFS)
+        if hasattr(os, "posix_fadvise"):
+            try:
+                os.posix_fadvise(f.fileno(), start, end - start + 1, os.POSIX_FADV_SEQUENTIAL)
+            except OSError:
+                pass
+
         f.seek(start)
         remaining = end - start + 1
         while remaining > 0:
@@ -490,6 +497,12 @@ def stream_file_range(file_path: str, start: int, end: int, chunk_size: int = 64
                 break
             remaining -= len(chunk)
             yield chunk
+
+        if hasattr(os, "posix_fadvise"):
+            try:
+                os.posix_fadvise(f.fileno(), start, end - start + 1, os.POSIX_FADV_DONTNEED)
+            except OSError:
+                pass
 
 @app.api_route("/api/books/{book_id}/file", methods=["GET", "HEAD"])
 async def get_book_file(

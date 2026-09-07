@@ -44,3 +44,11 @@ def test_get_current_user_id_expired_or_invalid_jwt():
     with pytest.raises(HTTPException) as exc_info:
         get_current_user_id("Bearer invalid.jwt.token")
     assert exc_info.value.status_code == 401
+
+def test_get_current_user_id_query_param():
+    guest_token = "guest_query_param_123"
+    assert get_current_user_id(None, token=guest_token) == guest_token
+    
+    user_id = "query-param-user"
+    token = create_session_token(user_id)
+    assert get_current_user_id(None, token=token) == user_id

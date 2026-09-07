@@ -113,14 +113,14 @@ def get_current_user_id(
     Falls back to 'guest' if token is absent or invalid.
     """
     raw_token = None
-    if authorization:
+    if isinstance(authorization, str) and authorization:
         parts = authorization.split()
         if len(parts) == 2 and parts[0].lower() == "bearer":
             raw_token = parts[1]
-    if not raw_token and token:
+    if not raw_token and isinstance(token, str) and token:
         raw_token = token
         
-    if not raw_token:
+    if not raw_token or not isinstance(raw_token, str):
         return "guest"
         
     try:
